@@ -1,0 +1,122 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id       String   @id @default(cuid())
+  name     String
+  email    String   @unique
+  password String
+  role     UserRole @default(USER)
+
+  official Official?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Official {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  phone  String?
+  pixKey String?
+
+  active Boolean @default(true)
+
+  scales MatchOfficial[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Championship {
+  id String @id @default(cuid())
+
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  matches Match[]
+}
+
+model Stadium {
+  id String @id @default(cuid())
+
+  name    String
+  city    String
+  state   String
+  address String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  matches Match[]
+}
+
+model Match {
+  id String @id @default(cuid())
+
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id])
+
+  stadiumId String
+  stadium   Stadium @relation(fields: [stadiumId], references: [id])
+
+  homeTeam String
+  awayTeam String
+
+  matchDate DateTime
+
+  status MatchStatus @default(SCHEDULED)
+
+  officials MatchOfficial[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MatchOfficial {
+  id String @id @default(cuid())
+
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
+
+  officialId String
+  official   Official @relation(fields: [officialId], references: [id])
+
+  role OfficialRole
+
+  confirmed Boolean?
+
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum MatchStatus {
+  SCHEDULED
+  FINISHED
+  CANCELED
+}
+
+enum OfficialRole {
+  DCO
+  ASSISTANT
+}
