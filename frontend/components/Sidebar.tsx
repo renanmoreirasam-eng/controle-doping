@@ -10,7 +10,7 @@ const allMenus = [
     name: 'Dashboard',
     href: '/dashboard',
     icon: '📊',
-    roles: ['ADMIN', 'COORDINATOR'],
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
     name: 'Jogos',
@@ -46,7 +46,7 @@ const allMenus = [
     name: 'Times',
     href: '/dashboard/teams',
     icon: '⚽',
-    roles: ['ADMIN', 'COORDINATOR'],
+    roles: ['ADMIN'],
   },
 ];
 
