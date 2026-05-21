@@ -635,73 +635,69 @@ export default function ScalesPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 mt-4">
-                    <div className="border border-slate-200 rounded-2xl p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-400 font-bold">
-                            DCO
-                          </p>
-
-                          {group.dco ? (
-                            <>
-                              <h4 className="font-bold text-slate-900 mt-1">
-                                {group.dco.official.user.name}
-                              </h4>
-
-                              <p className="text-sm text-slate-500">
-                                {group.dco.official.user.email}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-slate-400 mt-1">
-                              Não escalado
-                            </p>
-                          )}
-                        </div>
+                  <div className="mt-4 grid grid-cols-1 gap-3">
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                          DCO
+                        </p>
 
                         <span
                           className={`${getStatusClass(
                             group.dco,
-                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
+                          )} shrink-0 whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold leading-none`}
                         >
                           {getStatus(group.dco)}
                         </span>
                       </div>
+
+                      {group.dco ? (
+                        <div className="min-w-0">
+                          <h4 className="font-black text-slate-900 leading-tight break-words">
+                            {group.dco.official.user.name}
+                          </h4>
+
+                          <p className="text-sm text-slate-500 mt-1 break-all">
+                            {group.dco.official.user.email}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 text-sm">
+                          Não escalado
+                        </p>
+                      )}
                     </div>
 
-                    <div className="border border-slate-200 rounded-2xl p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-400 font-bold">
-                            Assistente
-                          </p>
-
-                          {group.assistant ? (
-                            <>
-                              <h4 className="font-bold text-slate-900 mt-1">
-                                {group.assistant.official.user.name}
-                              </h4>
-
-                              <p className="text-sm text-slate-500">
-                                {group.assistant.official.user.email}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-slate-400 mt-1">
-                              Não escalado
-                            </p>
-                          )}
-                        </div>
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                          Assistente
+                        </p>
 
                         <span
                           className={`${getStatusClass(
                             group.assistant,
-                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
+                          )} shrink-0 whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold leading-none`}
                         >
                           {getStatus(group.assistant)}
                         </span>
                       </div>
+
+                      {group.assistant ? (
+                        <div className="min-w-0">
+                          <h4 className="font-black text-slate-900 leading-tight break-words">
+                            {group.assistant.official.user.name}
+                          </h4>
+
+                          <p className="text-sm text-slate-500 mt-1 break-all">
+                            {group.assistant.official.user.email}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 text-sm">
+                          Não escalado
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -866,7 +862,7 @@ export default function ScalesPage() {
                         <span
                           className={`${getStatusClass(
                             group.dco,
-                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
+                          )} px-3 py-1 rounded-full text-sm font-semibold`}
                         >
                           {getStatus(group.dco)}
                         </span>
@@ -892,12 +888,12 @@ export default function ScalesPage() {
 
                       <td className="py-5 pr-4">
                         <span
-                          className={`${getStatusClass(
-                            group.assistant,
-                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
-                        >
-                          {getStatus(group.assistant)}
-                        </span>
+                        className={`${getStatusClass(
+                          group.assistant,
+                        )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
+                      >
+                        {getStatus(group.assistant)}
+                      </span>
                       </td>
 
                       <td className="py-5 pr-4 text-sm text-slate-600 whitespace-nowrap">
