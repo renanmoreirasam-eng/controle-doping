@@ -17,7 +17,7 @@ model User {
   name        String
   email       String   @unique
   password    String
-  role        UserRole @default(USER)
+  role        UserRole @default(OFFICIAL)
 
   official    Official?
 
@@ -60,11 +60,25 @@ model Stadium {
   city          String
   state         String
   address       String?
-
+  cep           String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   matches       Match[]
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  shortName String?
+  city      String
+  state     String
+  category  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, state])
 }
 
 model Match {
@@ -78,7 +92,8 @@ model Match {
 
   homeTeam              String
   awayTeam              String
-
+  missionCode String?
+  
   matchDate             DateTime
 
   status                MatchStatus @default(SCHEDULED)
@@ -87,6 +102,10 @@ model Match {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  draws                 Draw[]
+  substitutions         Substitution[]
+  roomInspections       RoomInspection[]
 }
 
 model MatchOfficial {
@@ -107,16 +126,109 @@ model MatchOfficial {
 
 enum UserRole {
   ADMIN
-  USER
+  COORDINATOR
+  OFFICIAL
 }
 
 enum MatchStatus {
   SCHEDULED
-  FINISHED
+  SCALE_ACCEPTED
+  IN_PROGRESS
+  CONTROL_DONE
   CANCELED
 }
 
 enum OfficialRole {
   DCO
   ASSISTANT
+}
+
+model Draw {
+  id        String   @id @default(cuid())
+
+  matchId   String
+  match     Match    @relation(fields: [matchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  players   DrawPlayer[]
+}
+
+model DrawPlayer {
+  id        String   @id @default(cuid())
+
+  drawId    String
+  draw      Draw     @relation(fields: [drawId], references: [id])
+
+  team      String
+  name      String
+  number    String
+  nickname String?
+  type      DrawPlayerType
+
+  createdAt DateTime @default(now())
+}
+
+enum DrawPlayerType {
+  EXAME
+  RESERVA
+}
+
+model Substitution {
+  id              String   @id @default(cuid())
+
+  matchId         String
+  match           Match    @relation(fields: [matchId], references: [id])
+
+  team            String
+  playerOutName   String
+  playerOutNumber String
+  playerInName    String
+  playerInNumber  String
+  minute          Int?
+  period          String?
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RoomInspection {
+  id        String   @id @default(cuid())
+
+  matchId   String
+  match     Match    @relation(fields: [matchId], references: [id])
+
+  status    String   @default("PENDING")
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     RoomInspectionItem[]
+  photos    RoomInspectionPhoto[]
+}
+
+model RoomInspectionItem {
+  id           String @id @default(cuid())
+
+  inspectionId String
+  inspection   RoomInspection @relation(fields: [inspectionId], references: [id])
+
+  label        String
+  status       String
+  notes        String?
+}
+
+model RoomInspectionPhoto {
+  id           String @id @default(cuid())
+
+  inspectionId String
+  inspection   RoomInspection @relation(fields: [inspectionId], references: [id])
+
+  fileName     String
+  dataUrl      String @db.Text
+
+  createdAt    DateTime @default(now())
 }

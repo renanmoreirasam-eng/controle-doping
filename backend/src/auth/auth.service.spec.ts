@@ -1,18 +1,76 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { AuthService } from './auth.service';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { UsersService } from '../users/users.service';
+import * as bcrypt from 'bcrypt';
 
-describe('AuthService', () => {
-  let service: AuthService;
+@Injectable()
+export class AuthService {
+  constructor(
+    private usersService: UsersService,
+    private jwtService: JwtService,
+  ) {}
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [AuthService],
-    }).compile();
+  async register(data: {
+    name: string;
+    email: string;
+    password: string;
+  }) {
+    const userExists = await this.usersService.findByEmail(data.email);
 
-    service = module.get<AuthService>(AuthService);
-  });
+    if (userExists) {
+      throw new UnauthorizedException('Usuário já existe');
+    }
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-});
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    const user = await this.usersService.create({
+      ...data,
+      password: hashedPassword,
+    });
+
+    const { password, ...userWithoutPassword } = user;
+
+    return userWithoutPassword;
+  }
+
+  async login(data: {
+    email: string;
+    password: string;
+  }) {
+    const user = await this.usersService.findByEmail(data.email);
+
+    if (!user) {
+      throw new UnauthorizedException('E-mail ou senha inválidos');
+    }
+
+    const passwordValid = await bcrypt.compare(
+      data.password,
+      user.password,
+    );
+
+    if (!passwordValid) {
+      throw new UnauthorizedException('E-mail ou senha inválidos');
+    }
+
+    const payload = {
+      sub: user.id,
+      id: user.id,
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    };
+  }
+}
