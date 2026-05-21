@@ -179,6 +179,12 @@ export default function MatchesPage() {
     return new Date(date).toLocaleString('pt-BR');
   }
 
+  function formatTime(date: string) {
+    return new Date(date).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
   function formatDateForInput(date: string) {
     const value = new Date(date);
 
@@ -400,73 +406,73 @@ export default function MatchesPage() {
 }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex">
+    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">
-        <header className="bg-white border-b border-slate-200 px-8 py-6">
-          <div className="flex items-center justify-between">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <p className="text-sm text-slate-500 font-medium">
                 Gestão operacional
               </p>
 
-              <h1 className="text-4xl font-black mt-1">
+              <h1 className="text-3xl lg:text-4xl font-black mt-1">
                 Partidas
               </h1>
             </div>
 
-            <div className="bg-slate-950 text-white px-5 py-3 rounded-2xl font-semibold">
+            <div className="bg-slate-950 text-white px-4 lg:px-5 py-3 rounded-2xl font-semibold w-fit">
               {matches.length} jogos
             </div>
           </div>
         </header>
 
-        <section className="p-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+        <section className="p-4 lg:p-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-5 mb-6 lg:mb-8">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
               <p className="text-slate-500 text-sm">
                 Total de jogos
               </p>
 
-              <h2 className="text-4xl font-black mt-2">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2">
                 {matches.length}
               </h2>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
               <p className="text-slate-500 text-sm">
                 Agendados
               </p>
 
-              <h2 className="text-4xl font-black mt-2 text-slate-700">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-slate-700">
                 {scheduledMatches}
               </h2>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
               <p className="text-slate-500 text-sm">
                 Em andamento
               </p>
 
-              <h2 className="text-4xl font-black mt-2 text-yellow-600">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-yellow-600">
                 {progressMatches}
               </h2>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
               <p className="text-slate-500 text-sm">
                 Finalizados
               </p>
 
-              <h2 className="text-4xl font-black mt-2 text-green-600">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-green-600">
                 {completedMatches}
               </h2>
             </div>
           </div>
           {isAdmin && (
-  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 mb-8">
-            <div className="flex items-center justify-between mb-6">
+  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6 mb-6 lg:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
               <div>
                 <h2 className="text-2xl font-black">
                   {editingId
@@ -630,10 +636,10 @@ export default function MatchesPage() {
               </div>
             )}
 
-            <div className="flex gap-3 mt-5">
+            <div className="flex flex-col sm:flex-row gap-3 mt-5">
               <button
                 onClick={handleSubmit}
-                className="bg-slate-950 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-slate-800 transition"
+                className="bg-slate-950 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-slate-800 transition text-center"
               >
                 {editingId
                   ? 'Salvar edição'
@@ -643,7 +649,7 @@ export default function MatchesPage() {
               {editingId && (
                 <button
                   onClick={clearForm}
-                  className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold"
+                  className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold text-center"
                 >
                   Cancelar
                 </button>
@@ -653,7 +659,7 @@ export default function MatchesPage() {
 )}
           
 
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6">
              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
     <div>
       <h2 className="text-2xl font-black">Jogos cadastrados</h2>
@@ -663,14 +669,14 @@ export default function MatchesPage() {
     </div>
 
     <input
-      className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 min-w-[320px]"
+      className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 w-full xl:w-[420px]"
       placeholder="Buscar por missão, jogo, estádio ou campeonato..."
       value={search}
       onChange={(e) => setSearch(e.target.value)}
     />
   </div>
 
-  <div className="flex gap-3 mb-6">
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
     <button
       onClick={() => setActiveTab('ACTIVE')}
       className={`px-5 py-3 rounded-2xl font-semibold transition ${
@@ -694,7 +700,95 @@ export default function MatchesPage() {
     </button>
   </div>
 
-            <div className="overflow-x-auto">
+            <div className="lg:hidden space-y-4">
+              {filteredMatches.map((match) => (
+                <div
+                  key={match.id}
+                  className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 mb-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs uppercase tracking-wide text-slate-400 font-bold">
+                          {match.missionCode || 'Sem missão'}
+                        </p>
+
+                        <h3 className="text-xl font-black text-slate-900 mt-1 leading-tight">
+                          {match.homeTeam} x {match.awayTeam}
+                        </h3>
+
+                        <p className="text-sm text-slate-500 mt-1">
+                          {match.championship.name}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`${getStatusClass(
+                          match,
+                        )} px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap`}
+                      >
+                        {getStatusLabel(match)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 text-sm">
+                    <div className="bg-slate-50 rounded-2xl p-3">
+                      <p className="text-slate-500">Estádio</p>
+                      <strong>🏟️ {match.stadium.name}</strong>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-2xl p-3">
+                      <p className="text-slate-500">Cidade</p>
+                      <strong>
+                        {match.stadium.city}/{match.stadium.state}
+                      </strong>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-slate-50 rounded-2xl p-3">
+                        <p className="text-slate-500">Data</p>
+                        <strong>{formatDate(match.matchDate)}</strong>
+                      </div>
+
+                      <div className="bg-slate-50 rounded-2xl p-3">
+                        <p className="text-slate-500">Horário</p>
+                        <strong>{formatTime(match.matchDate)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 mt-5">
+                    <Link
+                      href={`/dashboard/matches/${match.id}`}
+                      className="bg-slate-950 text-white text-center px-4 py-3 rounded-2xl text-sm font-semibold"
+                    >
+                      Abrir operação
+                    </Link>
+
+                    {isAdmin && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => startEdit(match)}
+                          className="bg-blue-600 text-white px-4 py-3 rounded-2xl text-sm font-semibold"
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          onClick={() => deleteMatch(match.id)}
+                          className="bg-red-600 text-white px-4 py-3 rounded-2xl text-sm font-semibold"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm text-slate-500">

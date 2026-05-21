@@ -255,7 +255,7 @@ export default function RoomInspectionPage() {
 
   if (!match) {
     return (
-      <main className="min-h-screen bg-slate-100 flex">
+      <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
         <Sidebar />
 
         <div className="flex-1 p-8">
@@ -266,7 +266,7 @@ export default function RoomInspectionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex">
+    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">

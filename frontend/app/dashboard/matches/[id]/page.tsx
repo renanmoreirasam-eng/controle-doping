@@ -468,7 +468,7 @@ function formatTimeOnly(date: string) {
 
   if (!match) {
     return (
-      <main className="min-h-screen bg-slate-100 flex">
+      <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
         <Sidebar />
         <div className="flex-1 p-8">Carregando...</div>
       </main>
@@ -476,7 +476,7 @@ function formatTimeOnly(date: string) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex">
+    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">

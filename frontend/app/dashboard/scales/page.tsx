@@ -364,7 +364,7 @@ export default function ScalesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex">
+    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">
@@ -386,7 +386,7 @@ export default function ScalesPage() {
           </div>
         </header>
 
-        <section className="p-8">
+        <section className="p-4 lg:p-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
               <p className="text-slate-500 text-sm">Escalas criadas</p>
