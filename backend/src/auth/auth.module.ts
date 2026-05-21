@@ -12,7 +12,7 @@ import { JwtStrategyService } from './jwt-strategy.service';
     UsersModule,
     PrismaModule,
     JwtModule.register({
-      secret: 'controle-doping-secret-dev',
+      secret: process.env.JWT_SECRET || 'controle-doping-secret-dev',
       signOptions: {
         expiresIn: '1d',
       },
