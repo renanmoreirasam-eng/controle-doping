@@ -244,10 +244,19 @@ export default function ScalesPage() {
   }
 
   function getStatusClass(scale?: Scale) {
-    if (!scale) return 'bg-slate-100 text-slate-600';
-    if (scale.confirmed === true) return 'bg-green-100 text-green-700';
-    if (scale.confirmed === false) return 'bg-red-100 text-red-700';
-    return 'bg-yellow-100 text-yellow-700';
+    if (!scale) {
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
+    }
+
+    if (scale.confirmed === true) {
+      return 'bg-green-100 text-green-700 border border-green-200';
+    }
+
+    if (scale.confirmed === false) {
+      return 'bg-red-100 text-red-700 border border-red-200';
+    }
+
+    return 'bg-yellow-100 text-yellow-700 border border-yellow-200';
   }
 
   async function createScale(role: 'DCO' | 'ASSISTANT', officialId: string) {
@@ -654,7 +663,7 @@ export default function ScalesPage() {
                         <span
                           className={`${getStatusClass(
                             group.dco,
-                          )} px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap`}
+                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
                         >
                           {getStatus(group.dco)}
                         </span>
@@ -688,7 +697,7 @@ export default function ScalesPage() {
                         <span
                           className={`${getStatusClass(
                             group.assistant,
-                          )} px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap`}
+                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
                         >
                           {getStatus(group.assistant)}
                         </span>
@@ -857,7 +866,7 @@ export default function ScalesPage() {
                         <span
                           className={`${getStatusClass(
                             group.dco,
-                          )} px-3 py-1 rounded-full text-sm font-semibold`}
+                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
                         >
                           {getStatus(group.dco)}
                         </span>
@@ -885,7 +894,7 @@ export default function ScalesPage() {
                         <span
                           className={`${getStatusClass(
                             group.assistant,
-                          )} px-3 py-1 rounded-full text-sm font-semibold`}
+                          )} inline-flex items-center justify-center min-w-[110px] whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold`}
                         >
                           {getStatus(group.assistant)}
                         </span>
