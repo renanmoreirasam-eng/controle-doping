@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Sidebar } from '../../../components/Sidebar';
+import { ConfirmModal } from '../../../components/ConfirmModal';
 import { api } from '../../../services/api';
 
 type Team = {
@@ -12,6 +13,16 @@ type Team = {
   state: string;
   category?: string;
   isActive: boolean;
+};
+
+type ModalState = {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  variant?: 'danger' | 'success' | 'warning' | 'default';
+  onConfirm?: () => void | Promise<void>;
 };
 
 export default function TeamsPage() {
@@ -25,6 +36,29 @@ export default function TeamsPage() {
   const [state, setState] = useState('');
   const [category, setCategory] = useState('');
   const [isActive, setIsActive] = useState(true);
+
+  const [modal, setModal] = useState<ModalState>({
+    open: false,
+    title: '',
+    message: '',
+    variant: 'default',
+  });
+
+  function closeModal() {
+    setModal({
+      open: false,
+      title: '',
+      message: '',
+      variant: 'default',
+    });
+  }
+
+  function showModal(data: Omit<ModalState, 'open'>) {
+    setModal({
+      open: true,
+      ...data,
+    });
+  }
 
   async function loadTeams() {
     const response = await api.get('/teams');
@@ -81,9 +115,23 @@ export default function TeamsPage() {
       clearForm();
       await loadTeams();
 
-      alert('Time cadastrado com sucesso!');
+      showModal({
+        title: 'Time cadastrado',
+        message: 'O time foi cadastrado com sucesso.',
+        confirmText: 'Entendi',
+        variant: 'success',
+        onConfirm: closeModal,
+      });
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao cadastrar time');
+      showModal({
+        title: 'Erro ao cadastrar',
+        message:
+          error.response?.data?.message ||
+          'Não foi possível cadastrar o time. Tente novamente.',
+        confirmText: 'Entendi',
+        variant: 'danger',
+        onConfirm: closeModal,
+      });
     }
   }
 
@@ -103,28 +151,70 @@ export default function TeamsPage() {
       clearForm();
       await loadTeams();
 
-      alert('Time atualizado com sucesso!');
+      showModal({
+        title: 'Time atualizado',
+        message: 'As informações do time foram atualizadas com sucesso.',
+        confirmText: 'Entendi',
+        variant: 'success',
+        onConfirm: closeModal,
+      });
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao atualizar time');
+      showModal({
+        title: 'Erro ao atualizar',
+        message:
+          error.response?.data?.message ||
+          'Não foi possível atualizar o time. Tente novamente.',
+        confirmText: 'Entendi',
+        variant: 'danger',
+        onConfirm: closeModal,
+      });
     }
   }
 
   async function deleteTeam(id: string) {
-    if (!confirm('Deseja realmente excluir este time?')) return;
+    showModal({
+      title: 'Excluir time',
+      message:
+        'Tem certeza que deseja excluir este time? Essa ação não poderá ser desfeita.',
+      confirmText: 'Sim, excluir',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/teams/${id}`);
+          await loadTeams();
 
-    try {
-      await api.delete(`/teams/${id}`);
-      await loadTeams();
-
-      alert('Time excluído com sucesso!');
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao excluir time');
-    }
+          showModal({
+            title: 'Time excluído',
+            message: 'O time foi excluído com sucesso.',
+            confirmText: 'Entendi',
+            variant: 'success',
+            onConfirm: closeModal,
+          });
+        } catch (error: any) {
+          showModal({
+            title: 'Erro ao excluir',
+            message:
+              error.response?.data?.message ||
+              'Não foi possível excluir o time. Tente novamente.',
+            confirmText: 'Entendi',
+            variant: 'danger',
+            onConfirm: closeModal,
+          });
+        }
+      },
+    });
   }
 
   async function handleSubmit() {
     if (!name || !city || !state) {
-      alert('Preencha nome, cidade e UF');
+      showModal({
+        title: 'Campos obrigatórios',
+        message: 'Preencha nome, cidade e UF antes de salvar o time.',
+        confirmText: 'Entendi',
+        variant: 'warning',
+        onConfirm: closeModal,
+      });
       return;
     }
 
@@ -418,6 +508,24 @@ export default function TeamsPage() {
           </div>
         </section>
       </div>
+
+      <ConfirmModal
+        open={modal.open}
+        title={modal.title}
+        message={modal.message}
+        confirmText={modal.confirmText}
+        cancelText={modal.cancelText}
+        variant={modal.variant}
+        onCancel={closeModal}
+        onConfirm={async () => {
+          if (modal.onConfirm) {
+            await modal.onConfirm();
+            return;
+          }
+
+          closeModal();
+        }}
+      />
     </main>
   );
 }
