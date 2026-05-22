@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Sidebar } from '../../../components/Sidebar';
 import { api } from '../../../services/api';
 import { getUser } from '../../../services/auth';
@@ -40,7 +41,9 @@ type ScaleGroup = {
   assistant?: Scale;
 };
 
-export default function ScalesPage() {
+function ScalesPageContent() {
+  const searchParams = useSearchParams();
+
   const [scales, setScales] = useState<Scale[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [officials, setOfficials] = useState<Official[]>([]);
@@ -94,6 +97,18 @@ export default function ScalesPage() {
     loadMatches();
     loadOfficials();
   }, []);
+
+  useEffect(() => {
+    const status = searchParams.get('status');
+
+    if (
+      status === 'PENDING' ||
+      status === 'CONFIRMED' ||
+      status === 'REFUSED'
+    ) {
+      setScaleStatusFilter(status);
+    }
+  }, [searchParams]);
 
   function canConfirmScale(scale?: Scale) {
     if (!scale) return false;
@@ -1004,5 +1019,21 @@ export default function ScalesPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function ScalesPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
+          <div className="p-8 text-slate-500">
+            Carregando escalas...
+          </div>
+        </main>
+      }
+    >
+      <ScalesPageContent />
+    </Suspense>
   );
 }

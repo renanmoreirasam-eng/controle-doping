@@ -167,6 +167,31 @@ export default function MatchDetailsPage() {
   
   const hasRoomInspection = roomInspections.length > 0;
   const isControlDone = match?.status === 'CONTROL_DONE';
+  const isCheckedIn =
+    match?.status === 'SCALE_ACCEPTED' ||
+    match?.status === 'IN_PROGRESS' ||
+    match?.status === 'CONTROL_DONE';
+
+  const isMatchInProgress =
+    match?.status === 'IN_PROGRESS' ||
+    match?.status === 'CONTROL_DONE';
+
+  const hasDrawDone = draws.length > 0;
+
+  const canDoCheckIn =
+    !!match && !isControlDone && !isCheckedIn;
+
+  const canStartMatch =
+    !!match &&
+    !isControlDone &&
+    isCheckedIn &&
+    match.status !== 'IN_PROGRESS';
+
+  const canFinishControl =
+    !!match &&
+    !isControlDone &&
+    isMatchInProgress &&
+    hasDrawDone;
 
   function formatTime() {
     const hrs = String(Math.floor(seconds / 3600)).padStart(2, '0');
@@ -194,7 +219,7 @@ export default function MatchDetailsPage() {
 
   function getStatusLabel(status: string) {
     if (status === 'SCHEDULED') return 'Agendado';
-    if (status === 'SCALE_ACCEPTED') return 'Escala aceita';
+    if (status === 'SCALE_ACCEPTED') return 'Check-in realizado';
     if (status === 'IN_PROGRESS') return 'Em andamento';
     if (status === 'CONTROL_DONE') return 'Controle realizado';
     if (status === 'CANCELED') return 'Cancelado';
@@ -1011,39 +1036,190 @@ function formatTimeOnly(date: string) {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
-  <h2 className="text-2xl font-black mb-2">
-    Status operacional
-  </h2>
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-8">
+              <h2 className="text-2xl font-black mb-2">
+                Status operacional
+              </h2>
 
-  <p className="text-slate-500 mb-6">
-    Controle do andamento da operação.
-  </p>
+              <p className="text-slate-500 mb-6">
+                Avance a operação seguindo a sequência obrigatória.
+              </p>
 
-  <div className="space-y-3">
-    <button
-      onClick={() => updateMatchStatus('IN_PROGRESS')}
-      disabled={isControlDone}
-      className="block w-full bg-yellow-500 hover:bg-yellow-600 disabled:bg-slate-300 text-white text-center py-4 rounded-2xl font-semibold transition"
-    >
-      Marcar em andamento
-    </button>
+              <div className="space-y-3">
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    isCheckedIn
+                      ? 'bg-green-50 border-green-200'
+                      : canDoCheckIn
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">
+                        1. Check-in no estádio
+                      </p>
 
-    <button
-      onClick={() => updateMatchStatus('CONTROL_DONE')}
-      disabled={isControlDone}
-      className="block w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white text-center py-4 rounded-2xl font-semibold transition"
-    >
-      Marcar controle realizado
-    </button>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Confirme a chegada da equipe ao estádio.
+                      </p>
+                    </div>
 
-    {isControlDone && (
-      <div className="bg-green-50 border border-green-200 text-green-700 rounded-2xl p-4 text-sm">
-        Controle já realizado. Informações operacionais bloqueadas.
-      </div>
-    )}
-  </div>
-</div>
+                    {isCheckedIn && (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Feito
+                      </span>
+                    )}
+                  </div>
+
+                  {canDoCheckIn && (
+                    <button
+                      onClick={() => updateMatchStatus('SCALE_ACCEPTED')}
+                      className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl font-semibold transition"
+                    >
+                      Fazer check-in no estádio
+                    </button>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    isMatchInProgress
+                      ? 'bg-green-50 border-green-200'
+                      : canStartMatch
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">
+                        2. Jogo em andamento
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Libera a etapa operacional da partida.
+                      </p>
+                    </div>
+
+                    {isMatchInProgress && (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Feito
+                      </span>
+                    )}
+                  </div>
+
+                  {canStartMatch && (
+                    <button
+                      onClick={() => updateMatchStatus('IN_PROGRESS')}
+                      className="mt-4 w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-2xl font-semibold transition"
+                    >
+                      Marcar jogo em andamento
+                    </button>
+                  )}
+
+                  {!isCheckedIn && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando check-in no estádio.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    hasDrawDone
+                      ? 'bg-green-50 border-green-200'
+                      : isMatchInProgress
+                        ? 'bg-purple-50 border-purple-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">
+                        3. Sorteio realizado
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Registre os atletas sorteados para concluir esta etapa.
+                      </p>
+                    </div>
+
+                    {hasDrawDone ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Feito
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {!hasDrawDone && isMatchInProgress && !isControlDone && (
+                    <p className="mt-4 text-xs text-purple-700">
+                      Após salvar os atletas sorteados, esta etapa ficará como sorteio realizado.
+                    </p>
+                  )}
+
+                  {!isMatchInProgress && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando o jogo ser marcado como em andamento.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    isControlDone
+                      ? 'bg-green-50 border-green-200'
+                      : canFinishControl
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">
+                        4. Controle realizado
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Finaliza a operação e bloqueia alterações.
+                      </p>
+                    </div>
+
+                    {isControlDone && (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Finalizado
+                      </span>
+                    )}
+                  </div>
+
+                  {canFinishControl && (
+                    <button
+                      onClick={() => updateMatchStatus('CONTROL_DONE')}
+                      className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-semibold transition"
+                    >
+                      Marcar controle realizado
+                    </button>
+                  )}
+
+                  {!canFinishControl && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando jogo em andamento e sorteio realizado.
+                    </p>
+                  )}
+                </div>
+
+                {isControlDone && (
+                  <div className="bg-green-50 border border-green-200 text-green-700 rounded-2xl p-4 text-sm">
+                    Controle já realizado. Informações operacionais bloqueadas.
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center">
   <h2 className="text-2xl font-black mb-2">
