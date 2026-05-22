@@ -113,26 +113,26 @@ export default function Dashboard() {
 
   function getStatusClass(status: string) {
     if (status === 'SCHEDULED') {
-      return 'bg-slate-100 text-slate-700';
+      return 'bg-blue-50 text-[var(--cdb-blue)] border border-blue-100';
     }
 
     if (status === 'SCALE_ACCEPTED') {
-      return 'bg-blue-100 text-blue-700';
+      return 'bg-emerald-50 text-[var(--cdb-green)] border border-emerald-100';
     }
 
     if (status === 'IN_PROGRESS') {
-      return 'bg-yellow-100 text-yellow-700';
+      return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
     }
 
     if (status === 'CONTROL_DONE') {
-      return 'bg-green-100 text-green-700';
+      return 'bg-emerald-50 text-[var(--cdb-green)] border border-emerald-100';
     }
 
     if (status === 'CANCELED') {
-      return 'bg-red-100 text-red-700';
+      return 'bg-red-50 text-red-700 border border-red-100';
     }
 
-    return 'bg-slate-100 text-slate-700';
+    return 'bg-slate-100 text-slate-700 border border-slate-200';
   }
 
   const inProgress = matches.filter(
@@ -164,23 +164,29 @@ export default function Dashboard() {
     })[0];
 
   return (
-    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
+    <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">
-        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <header className="relative overflow-hidden bg-white border-b border-blue-100 px-4 lg:px-8 py-5 lg:py-7">
+          <div className="absolute inset-y-0 right-0 hidden lg:block w-96 bg-gradient-to-l from-blue-50 via-green-50 to-transparent" />
+
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm text-slate-500 font-medium">
+              <p className="text-sm text-[var(--cdb-blue)] font-black uppercase tracking-[0.2em]">
                 Painel operacional
               </p>
 
-              <h1 className="text-3xl lg:text-4xl font-black mt-1">
+              <h1 className="text-3xl lg:text-4xl font-black mt-1 text-slate-950">
                 Dashboard
               </h1>
+
+              <p className="text-slate-500 mt-2">
+                Visão geral das partidas, escalas e controles de doping.
+              </p>
             </div>
 
-            <div className="bg-green-100 text-green-700 px-4 py-2 rounded-2xl font-semibold w-fit">
+            <div className="bg-emerald-50 border border-emerald-100 text-[var(--cdb-green)] px-4 py-2 rounded-2xl font-black w-fit">
               Sistema online
             </div>
           </div>
@@ -188,25 +194,25 @@ export default function Dashboard() {
 
         <section className="p-4 lg:p-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-5">
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-blue-100 hover:shadow-md transition">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-slate-500 text-sm">
                     Jogos cadastrados
                   </p>
 
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
                     {matches.length}
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-blue-50 text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
                   🏟️
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-yellow-100 hover:shadow-md transition">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-slate-500 text-sm">
@@ -218,43 +224,43 @@ export default function Dashboard() {
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-yellow-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-yellow-50 text-yellow-700 flex items-center justify-center text-3xl">
                   🔴
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-emerald-100 hover:shadow-md transition">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-slate-500 text-sm">
                     Controles realizados
                   </p>
 
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-green-600">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
                     {finished}
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-green-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-emerald-50 text-[var(--cdb-green)] flex items-center justify-center text-3xl">
                   ✅
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-blue-100 hover:shadow-md transition">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-slate-500 text-sm">
                     Jogos agendados
                   </p>
 
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-blue-600">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
                     {scheduled}
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-blue-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-blue-50 text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
                   📅
                 </div>
               </div>
@@ -264,7 +270,7 @@ export default function Dashboard() {
               href="/dashboard/scales?status=PENDING"
               className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:-translate-y-0.5 hover:shadow-md ${
                 pendingScales.length > 0
-                  ? 'bg-orange-50 border-orange-200'
+                  ? 'bg-yellow-50 border-yellow-200'
                   : 'bg-white border-slate-200'
               }`}
             >
@@ -273,7 +279,7 @@ export default function Dashboard() {
                   <p
                     className={`text-sm ${
                       pendingScales.length > 0
-                        ? 'text-orange-700'
+                        ? 'text-yellow-700'
                         : 'text-slate-500'
                     }`}
                   >
@@ -283,7 +289,7 @@ export default function Dashboard() {
                   <h2
                     className={`text-3xl lg:text-4xl font-black mt-2 ${
                       pendingScales.length > 0
-                        ? 'text-orange-600'
+                        ? 'text-yellow-700'
                         : 'text-slate-700'
                     }`}
                   >
@@ -298,7 +304,7 @@ export default function Dashboard() {
                 <div
                   className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
                     pendingScales.length > 0
-                      ? 'bg-orange-100'
+                      ? 'bg-yellow-100'
                       : 'bg-slate-100'
                   }`}
                 >
@@ -311,11 +317,11 @@ export default function Dashboard() {
           {pendingScales.length > 0 && (
             <Link
               href="/dashboard/scales?status=PENDING"
-              className="block mt-6 bg-orange-50 border border-orange-200 rounded-3xl p-5 lg:p-6 hover:bg-orange-100 transition"
+              className="block mt-6 bg-yellow-50 border border-yellow-200 rounded-3xl p-5 lg:p-6 hover:bg-yellow-100 transition"
             >
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-orange-600 font-black">
+                  <p className="text-xs uppercase tracking-[0.2em] text-yellow-700 font-black">
                     Ação necessária
                   </p>
 
@@ -331,7 +337,7 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                <span className="bg-orange-600 text-white px-5 py-3 rounded-2xl text-sm font-bold text-center">
+                <span className="bg-[var(--cdb-yellow)] text-slate-950 px-5 py-3 rounded-2xl text-sm font-black text-center">
                   Ver escalas pendentes
                 </span>
               </div>
@@ -339,10 +345,10 @@ export default function Dashboard() {
           )}
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-8">
-            <div className="xl:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200 p-4 lg:p-6">
+            <div className="xl:col-span-2 bg-white rounded-3xl shadow-sm border border-blue-100 p-4 lg:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-black">
+                  <h2 className="text-2xl font-black text-slate-950">
                     Operações recentes
                   </h2>
 
@@ -351,7 +357,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                <div className="bg-slate-100 px-4 py-2 rounded-2xl text-sm font-semibold w-fit">
+                <div className="bg-blue-50 text-[var(--cdb-blue)] px-4 py-2 rounded-2xl text-sm font-black w-fit">
                   {matches.length} jogos
                 </div>
               </div>
@@ -360,11 +366,11 @@ export default function Dashboard() {
                 {recentMatches.map((match) => (
                   <div
                     key={match.id}
-                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 hover:border-slate-300 transition"
+                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 hover:border-blue-200 hover:bg-blue-50/30 transition"
                   >
                     <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                       <div>
-                        <h3 className="text-xl lg:text-2xl font-bold">
+                        <h3 className="text-xl lg:text-2xl font-black text-slate-950">
                           {match.homeTeam} x {match.awayTeam}
                         </h3>
 
@@ -394,7 +400,7 @@ export default function Dashboard() {
                         <span
                           className={`${getStatusClass(
                             match.status,
-                          )} inline-flex whitespace-nowrap px-4 py-2 rounded-2xl text-sm font-semibold`}
+                          )} inline-flex whitespace-nowrap px-4 py-2 rounded-2xl text-sm font-black`}
                         >
                           {getStatusLabel(match.status)}
                         </span>
@@ -404,10 +410,10 @@ export default function Dashboard() {
                 ))}
 
                 {matches.length === 0 && (
-                  <div className="border border-dashed border-slate-300 rounded-3xl p-8 text-center">
+                  <div className="border border-dashed border-blue-200 rounded-3xl p-8 text-center bg-blue-50/30">
                     <div className="text-5xl mb-4">⚽</div>
 
-                    <h3 className="text-xl font-bold">
+                    <h3 className="text-xl font-black text-slate-950">
                       Nenhuma operação encontrada
                     </h3>
 
@@ -420,8 +426,8 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-6">
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 lg:p-6">
-                <h2 className="text-2xl font-black mb-4">
+              <div className="bg-white rounded-3xl shadow-sm border border-blue-100 p-4 lg:p-6">
+                <h2 className="text-2xl font-black mb-4 text-slate-950">
                   Resumo operacional
                 </h2>
 
@@ -431,7 +437,9 @@ export default function Dashboard() {
                       Jogos cadastrados
                     </span>
 
-                    <strong>{matches.length}</strong>
+                    <strong className="text-[var(--cdb-blue)]">
+                      {matches.length}
+                    </strong>
                   </div>
 
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -449,7 +457,7 @@ export default function Dashboard() {
                       Finalizados
                     </span>
 
-                    <strong className="text-green-600">
+                    <strong className="text-[var(--cdb-green)]">
                       {finished}
                     </strong>
                   </div>
@@ -462,7 +470,7 @@ export default function Dashboard() {
                     <strong
                       className={
                         pendingScales.length > 0
-                          ? 'text-orange-600'
+                          ? 'text-yellow-700'
                           : 'text-slate-700'
                       }
                     >
@@ -472,21 +480,26 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-slate-950 text-white rounded-3xl p-4 lg:p-6">
-                <h2 className="text-2xl font-black mb-3">
-                  Controle Doping
-                </h2>
+              <div className="relative overflow-hidden bg-[var(--cdb-blue)] text-white rounded-3xl p-4 lg:p-6 shadow-sm">
+                <div className="absolute -right-10 -top-10 w-32 h-32 bg-[var(--cdb-green)] rounded-full opacity-30" />
+                <div className="absolute -right-4 bottom-4 w-20 h-20 bg-[var(--cdb-yellow)] rounded-full opacity-30" />
 
-                <p className="text-slate-400">
-                  Acompanhe partidas, escalas, sorteios e controles realizados.
-                </p>
+                <div className="relative">
+                  <h2 className="text-2xl font-black mb-3">
+                    Controle Doping
+                  </h2>
 
-                <Link
-                  href="/dashboard/matches"
-                  className="block mt-6 bg-white text-slate-950 text-center py-3 rounded-2xl font-bold"
-                >
-                  Ver jogos
-                </Link>
+                  <p className="text-blue-100">
+                    Acompanhe partidas, escalas, sorteios e controles realizados.
+                  </p>
+
+                  <Link
+                    href="/dashboard/matches"
+                    className="block mt-6 bg-white text-[var(--cdb-blue)] text-center py-3 rounded-2xl font-black"
+                  >
+                    Ver jogos
+                  </Link>
+                </div>
               </div>
             </div>
           </div>

@@ -19,10 +19,19 @@ type ModalState = {
   open: boolean;
   title: string;
   message: string;
-  confirmText?: string;
-  cancelText?: string;
-  variant?: 'danger' | 'success' | 'warning' | 'default';
+  variant: 'danger' | 'success' | 'warning' | 'default';
+  confirmText: string;
+  cancelText: string;
   onConfirm?: () => void | Promise<void>;
+};
+
+const emptyModal: ModalState = {
+  open: false,
+  title: '',
+  message: '',
+  variant: 'default',
+  confirmText: 'Entendi',
+  cancelText: 'Fechar',
 };
 
 export default function TeamsPage() {
@@ -37,28 +46,7 @@ export default function TeamsPage() {
   const [category, setCategory] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  const [modal, setModal] = useState<ModalState>({
-    open: false,
-    title: '',
-    message: '',
-    variant: 'default',
-  });
-
-  function closeModal() {
-    setModal({
-      open: false,
-      title: '',
-      message: '',
-      variant: 'default',
-    });
-  }
-
-  function showModal(data: Omit<ModalState, 'open'>) {
-    setModal({
-      open: true,
-      ...data,
-    });
-  }
+  const [modal, setModal] = useState<ModalState>(emptyModal);
 
   async function loadTeams() {
     const response = await api.get('/teams');
@@ -81,6 +69,32 @@ export default function TeamsPage() {
     return value.includes(search.toLowerCase());
   });
 
+  function closeModal() {
+    setModal(emptyModal);
+  }
+
+  function showModal({
+    title,
+    message,
+    variant = 'default',
+    confirmText = 'Entendi',
+    cancelText = 'Fechar',
+    onConfirm,
+  }: Partial<ModalState> & {
+    title: string;
+    message: string;
+  }) {
+    setModal({
+      open: true,
+      title,
+      message,
+      variant,
+      confirmText,
+      cancelText,
+      onConfirm,
+    });
+  }
+
   function clearForm() {
     setEditingId(null);
     setName('');
@@ -99,6 +113,11 @@ export default function TeamsPage() {
     setState(team.state);
     setCategory(team.category || '');
     setIsActive(team.isActive);
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    });
   }
 
   async function createTeam() {
@@ -118,19 +137,13 @@ export default function TeamsPage() {
       showModal({
         title: 'Time cadastrado',
         message: 'O time foi cadastrado com sucesso.',
-        confirmText: 'Entendi',
         variant: 'success',
-        onConfirm: closeModal,
       });
     } catch (error: any) {
       showModal({
         title: 'Erro ao cadastrar',
-        message:
-          error.response?.data?.message ||
-          'Não foi possível cadastrar o time. Tente novamente.',
-        confirmText: 'Entendi',
+        message: error.response?.data?.message || 'Erro ao cadastrar time.',
         variant: 'danger',
-        onConfirm: closeModal,
       });
     }
   }
@@ -154,52 +167,42 @@ export default function TeamsPage() {
       showModal({
         title: 'Time atualizado',
         message: 'As informações do time foram atualizadas com sucesso.',
-        confirmText: 'Entendi',
         variant: 'success',
-        onConfirm: closeModal,
       });
     } catch (error: any) {
       showModal({
         title: 'Erro ao atualizar',
-        message:
-          error.response?.data?.message ||
-          'Não foi possível atualizar o time. Tente novamente.',
-        confirmText: 'Entendi',
+        message: error.response?.data?.message || 'Erro ao atualizar time.',
         variant: 'danger',
-        onConfirm: closeModal,
       });
     }
   }
 
-  async function deleteTeam(id: string) {
+  function requestDeleteTeam(team: Team) {
     showModal({
-      title: 'Excluir time',
-      message:
-        'Tem certeza que deseja excluir este time? Essa ação não poderá ser desfeita.',
+      title: 'Excluir time?',
+      message: `Deseja realmente excluir o time ${team.name}? Essa ação não poderá ser desfeita.`,
+      variant: 'danger',
       confirmText: 'Sim, excluir',
       cancelText: 'Cancelar',
-      variant: 'danger',
       onConfirm: async () => {
         try {
-          await api.delete(`/teams/${id}`);
+          await api.delete(`/teams/${team.id}`);
           await loadTeams();
+          closeModal();
 
           showModal({
             title: 'Time excluído',
             message: 'O time foi excluído com sucesso.',
-            confirmText: 'Entendi',
             variant: 'success',
-            onConfirm: closeModal,
           });
         } catch (error: any) {
+          closeModal();
+
           showModal({
             title: 'Erro ao excluir',
-            message:
-              error.response?.data?.message ||
-              'Não foi possível excluir o time. Tente novamente.',
-            confirmText: 'Entendi',
+            message: error.response?.data?.message || 'Erro ao excluir time.',
             variant: 'danger',
-            onConfirm: closeModal,
           });
         }
       },
@@ -207,13 +210,20 @@ export default function TeamsPage() {
   }
 
   async function handleSubmit() {
-    if (!name || !city || !state) {
+    if (!name.trim() || !city.trim() || !state.trim()) {
       showModal({
         title: 'Campos obrigatórios',
-        message: 'Preencha nome, cidade e UF antes de salvar o time.',
-        confirmText: 'Entendi',
+        message: 'Preencha nome, cidade e UF para salvar o time.',
         variant: 'warning',
-        onConfirm: closeModal,
+      });
+      return;
+    }
+
+    if (state.trim().length !== 2) {
+      showModal({
+        title: 'UF inválida',
+        message: 'Informe a UF com duas letras. Exemplo: SP, RJ, MG.',
+        variant: 'warning',
       });
       return;
     }
@@ -227,107 +237,111 @@ export default function TeamsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
+    <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">
-        <header className="bg-white border-b border-slate-200 px-8 py-6">
-          <div className="flex items-center justify-between">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm text-slate-500 font-medium">
-                Base esportiva
-              </p>
+              <div className="inline-flex items-center gap-2 bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.18em]">
+                ⚽ Base esportiva
+              </div>
 
-              <h1 className="text-4xl font-black mt-1">
+              <h1 className="text-3xl lg:text-4xl font-black mt-3 text-[var(--cdb-dark)]">
                 Times
               </h1>
+
+              <p className="text-slate-500 mt-2 max-w-2xl">
+                Gerencie os times cadastrados para utilização nos jogos e operações de controle.
+              </p>
             </div>
 
-            <div className="bg-slate-950 text-white px-5 py-3 rounded-2xl font-semibold">
+            <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
               {teams.length} cadastrados
             </div>
           </div>
         </header>
 
         <section className="p-4 lg:p-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5 mb-8">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Total de times
                   </p>
 
-                  <h2 className="text-4xl font-black mt-2">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-dark)]">
                     {teams.length}
                   </h2>
                 </div>
 
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
                   ⚽
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Ativos
                   </p>
 
-                  <h2 className="text-4xl font-black mt-2 text-green-600">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
                     {activeTeams}
                   </h2>
                 </div>
 
-                <div className="w-16 h-16 rounded-2xl bg-green-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
                   ✅
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Inativos
                   </p>
 
-                  <h2 className="text-4xl font-black mt-2 text-red-600">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-red-600">
                     {inactiveTeams}
                   </h2>
                 </div>
 
-                <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center text-3xl">
                   ⛔
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Estados
                   </p>
 
-                  <h2 className="text-4xl font-black mt-2 text-blue-600">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
                     {statesCount}
                   </h2>
                 </div>
 
-                <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-yellow-soft)] text-[#9A7600] flex items-center justify-center text-3xl">
                   📍
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-8">
-            <div className="flex items-center justify-between mb-6">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-6 mb-8">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-black">
+                <h2 className="text-2xl font-black text-[var(--cdb-dark)]">
                   {editingId ? 'Editar time' : 'Cadastrar time'}
                 </h2>
 
@@ -337,36 +351,36 @@ export default function TeamsPage() {
               </div>
 
               {editingId && (
-                <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-2xl text-sm font-semibold">
+                <span className="bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-2xl text-sm font-bold w-fit">
                   Modo edição
                 </span>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
               <input
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 placeholder="Nome do time"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
 
               <input
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 placeholder="Nome curto"
                 value={shortName}
                 onChange={(e) => setShortName(e.target.value)}
               />
 
               <input
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 placeholder="Cidade"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
               />
 
               <input
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 placeholder="UF"
                 maxLength={2}
                 value={state}
@@ -374,14 +388,14 @@ export default function TeamsPage() {
               />
 
               <input
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 placeholder="Categoria"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               />
 
               <select
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 value={isActive ? 'true' : 'false'}
                 onChange={(e) => setIsActive(e.target.value === 'true')}
               >
@@ -390,10 +404,10 @@ export default function TeamsPage() {
               </select>
             </div>
 
-            <div className="flex gap-3 mt-5">
+            <div className="flex flex-col sm:flex-row gap-3 mt-5">
               <button
                 onClick={handleSubmit}
-                className="bg-slate-950 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-slate-800 transition"
+                className="bg-[var(--cdb-blue)] text-white px-6 py-3 rounded-2xl font-bold hover:brightness-90 transition shadow-md"
               >
                 {editingId ? 'Salvar edição' : 'Cadastrar time'}
               </button>
@@ -401,7 +415,7 @@ export default function TeamsPage() {
               {editingId && (
                 <button
                   onClick={clearForm}
-                  className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold hover:bg-slate-200 transition"
+                  className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-bold hover:bg-slate-200 transition"
                 >
                   Cancelar
                 </button>
@@ -409,10 +423,10 @@ export default function TeamsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-6">
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
               <div>
-                <h2 className="text-2xl font-black">
+                <h2 className="text-2xl font-black text-[var(--cdb-dark)]">
                   Lista de times
                 </h2>
 
@@ -422,7 +436,7 @@ export default function TeamsPage() {
               </div>
 
               <input
-                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 min-w-[320px] focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 w-full xl:w-[380px] focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
                 placeholder="Buscar por time, cidade, UF ou categoria..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -433,16 +447,16 @@ export default function TeamsPage() {
               {filteredTeams.map((team) => (
                 <div
                   key={team.id}
-                  className="border border-slate-200 rounded-3xl p-5 hover:border-slate-300 transition"
+                  className="border border-slate-200 rounded-3xl p-5 hover:border-[var(--cdb-blue)] transition bg-white"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-4 min-w-0">
+                      <div className="w-14 h-14 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-2xl shrink-0">
                         ⚽
                       </div>
 
-                      <div>
-                        <h3 className="text-2xl font-black">
+                      <div className="min-w-0">
+                        <h3 className="text-xl lg:text-2xl font-black text-[var(--cdb-dark)] break-words">
                           {team.name}
                         </h3>
 
@@ -451,11 +465,11 @@ export default function TeamsPage() {
                         </p>
 
                         <div className="flex flex-wrap gap-2 mt-4">
-                          <span className="bg-slate-100 px-3 py-2 rounded-xl text-sm">
+                          <span className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
                             Nome curto: {team.shortName || 'Não informado'}
                           </span>
 
-                          <span className="bg-slate-100 px-3 py-2 rounded-xl text-sm">
+                          <span className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
                             Categoria: {team.category || 'Não informado'}
                           </span>
                         </div>
@@ -463,9 +477,9 @@ export default function TeamsPage() {
                     </div>
 
                     <span
-                      className={`px-4 py-2 rounded-2xl text-sm font-semibold h-fit ${
+                      className={`px-4 py-2 rounded-2xl text-sm font-bold h-fit w-fit ${
                         team.isActive
-                          ? 'bg-green-100 text-green-700'
+                          ? 'bg-[var(--cdb-green-soft)] text-[var(--cdb-green)]'
                           : 'bg-red-100 text-red-700'
                       }`}
                     >
@@ -473,17 +487,17 @@ export default function TeamsPage() {
                     </span>
                   </div>
 
-                  <div className="flex gap-3 mt-6">
+                  <div className="flex flex-col sm:flex-row gap-3 mt-6">
                     <button
                       onClick={() => startEdit(team)}
-                      className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-semibold hover:bg-blue-700 transition"
+                      className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold hover:brightness-90 transition"
                     >
                       Editar
                     </button>
 
                     <button
-                      onClick={() => deleteTeam(team.id)}
-                      className="bg-red-600 text-white px-5 py-3 rounded-2xl font-semibold hover:bg-red-700 transition"
+                      onClick={() => requestDeleteTeam(team)}
+                      className="bg-red-600 text-white px-5 py-3 rounded-2xl font-bold hover:bg-red-700 transition"
                     >
                       Excluir
                     </button>
@@ -495,7 +509,7 @@ export default function TeamsPage() {
                 <div className="border border-dashed border-slate-300 rounded-3xl p-10 text-center xl:col-span-2">
                   <div className="text-6xl mb-4">⚽</div>
 
-                  <h3 className="text-xl font-bold">
+                  <h3 className="text-xl font-bold text-[var(--cdb-dark)]">
                     Nenhum time encontrado
                   </h3>
 

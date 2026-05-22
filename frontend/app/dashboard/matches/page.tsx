@@ -7,7 +7,6 @@ import { Sidebar } from '../../../components/Sidebar';
 import { api } from '../../../services/api';
 import { getUser } from '../../../services/auth';
 
-
 type Championship = {
   id: string;
   name: string;
@@ -51,7 +50,7 @@ type Match = {
     state: string;
   };
 
-    officials?: {
+  officials?: {
     id: string;
     role: string;
     confirmed: boolean | null;
@@ -59,11 +58,10 @@ type Match = {
 };
 
 export default function MatchesPage() {
-  
   const [matches, setMatches] = useState<Match[]>([]);
   const [championships, setChampionships] = useState<Championship[]>([]);
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'DONE'>('ACTIVE');
-  
+
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
 
@@ -72,10 +70,14 @@ export default function MatchesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [championshipId, setChampionshipId] = useState('');
+  const [championshipName, setChampionshipName] = useState('');
+
   const [stadiumId, setStadiumId] = useState('');
+  const [stadiumName, setStadiumName] = useState('');
+
   const [homeTeam, setHomeTeam] = useState('');
   const [awayTeam, setAwayTeam] = useState('');
-  
+
   const [status, setStatus] = useState('SCHEDULED');
 
   const [matchDate, setMatchDate] = useState('');
@@ -123,26 +125,26 @@ export default function MatchesPage() {
   }, []);
 
   const filteredMatches = useMemo(() => {
-  return matches.filter((match) => {
-    const value = `
-      ${match.missionCode || ''}
-      ${match.homeTeam}
-      ${match.awayTeam}
-      ${match.championship.name}
-      ${match.stadium.name}
-      ${match.stadium.city}
-    `.toLowerCase();
+    return matches.filter((match) => {
+      const value = `
+        ${match.missionCode || ''}
+        ${match.homeTeam}
+        ${match.awayTeam}
+        ${match.championship.name}
+        ${match.stadium.name}
+        ${match.stadium.city}
+      `.toLowerCase();
 
-    const matchesSearch = value.includes(search.toLowerCase());
+      const matchesSearch = value.includes(search.toLowerCase());
 
-    const matchesTab =
-      activeTab === 'DONE'
-        ? match.status === 'CONTROL_DONE'
-        : match.status !== 'CONTROL_DONE';
+      const matchesTab =
+        activeTab === 'DONE'
+          ? match.status === 'CONTROL_DONE'
+          : match.status !== 'CONTROL_DONE';
 
-    return matchesSearch && matchesTab;
-  });
-}, [matches, search, activeTab]);
+      return matchesSearch && matchesTab;
+    });
+  }, [matches, search, activeTab]);
 
   const scheduledMatches = matches.filter(
     (match) => match.status === 'SCHEDULED',
@@ -167,10 +169,13 @@ export default function MatchesPage() {
   function clearForm() {
     setEditingId(null);
     setChampionshipId('');
+    setChampionshipName('');
     setStadiumId('');
+    setStadiumName('');
     setHomeTeam('');
     setAwayTeam('');
     setMatchDate('');
+    setMatchTime('');
     setMissionCode('');
     setStatus('SCHEDULED');
   }
@@ -185,115 +190,171 @@ export default function MatchesPage() {
       minute: '2-digit',
     });
   }
-  function formatDateForInput(date: string) {
-    const value = new Date(date);
-
-    const offset = value.getTimezoneOffset();
-
-    const localDate = new Date(
-      value.getTime() - offset * 60 * 1000,
-    );
-
-    return localDate.toISOString().slice(0, 16);
-  }
 
   function formatDateOnly(date: string) {
-  return new Date(date).toISOString().slice(0, 10);
-}
+    return new Date(date).toISOString().slice(0, 10);
+  }
 
   function formatTimeOnly(date: string) {
     return new Date(date).toTimeString().slice(0, 5);
   }
 
+  function teamLabel(team: Team) {
+    return `${team.name} — ${team.city}/${team.state}`;
+  }
+
+  function stadiumLabel(stadium: Stadium) {
+    return `${stadium.name} — ${stadium.city}/${stadium.state}`;
+  }
+
+  function teamExists(teamName: string) {
+    return teams.some(
+      (team) =>
+        team.name.trim().toLowerCase() ===
+        teamName.trim().toLowerCase(),
+    );
+  }
+
+  function findChampionshipByName(name: string) {
+    return championships.find(
+      (championship) =>
+        championship.name.trim().toLowerCase() ===
+        name.trim().toLowerCase(),
+    );
+  }
+
+  function findStadiumByLabel(label: string) {
+    return stadiums.find(
+      (stadium) =>
+        stadiumLabel(stadium).trim().toLowerCase() ===
+        label.trim().toLowerCase(),
+    );
+  }
+
+  function findStadiumByMatch(match: Match) {
+    return stadiums.find((stadium) => {
+      if (match.stadiumId && stadium.id === match.stadiumId) {
+        return true;
+      }
+
+      return (
+        stadium.name === match.stadium.name &&
+        stadium.city === match.stadium.city &&
+        stadium.state === match.stadium.state
+      );
+    });
+  }
+
   function startEdit(match: Match) {
     setEditingId(match.id);
+
+    const currentChampionship = championships.find(
+      (championship) =>
+        championship.id === match.championshipId ||
+        championship.id === match.championship.id ||
+        championship.name === match.championship.name,
+    );
 
     setChampionshipId(
       match.championshipId ||
         match.championship.id ||
+        currentChampionship?.id ||
         '',
     );
+
+    setChampionshipName(
+      currentChampionship?.name ||
+        match.championship.name ||
+        '',
+    );
+
+    const currentStadium = findStadiumByMatch(match);
 
     setStadiumId(
       match.stadiumId ||
         match.stadium.id ||
+        currentStadium?.id ||
         '',
+    );
+
+    setStadiumName(
+      currentStadium
+        ? stadiumLabel(currentStadium)
+        : `${match.stadium.name} — ${match.stadium.city}/${match.stadium.state}`,
     );
 
     setHomeTeam(match.homeTeam);
     setAwayTeam(match.awayTeam);
-    
+
     setMissionCode(match.missionCode || '');
     setMatchDate(formatDateOnly(match.matchDate));
     setMatchTime(formatTimeOnly(match.matchDate));
-
-    
 
     setStatus(match.status);
   }
 
   async function createMatch() {
-  if (!matchDate || !matchTime) {
-    alert('Informe a data e o horário do jogo');
-    return;
+    if (!matchDate || !matchTime) {
+      alert('Informe a data e o horário do jogo');
+      return;
+    }
+
+    try {
+      const fullMatchDate = `${matchDate}T${matchTime}:00`;
+
+      await api.post('/matches', {
+        championshipId,
+        stadiumId,
+        homeTeam,
+        awayTeam,
+        missionCode,
+        matchDate: fullMatchDate,
+      });
+
+      clearForm();
+      await loadMatches();
+
+      alert('Jogo cadastrado com sucesso!');
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          'Erro ao cadastrar jogo',
+      );
+    }
   }
-
-  try {
-    const fullMatchDate = `${matchDate}T${matchTime}:00`;
-
-    await api.post('/matches', {
-      championshipId,
-      stadiumId,
-      homeTeam,
-      awayTeam,
-      missionCode,
-      matchDate: fullMatchDate,
-    });
-
-    clearForm();
-    await loadMatches();
-
-    alert('Jogo cadastrado com sucesso!');
-  } catch (error: any) {
-    alert(
-      error.response?.data?.message ||
-        'Erro ao cadastrar jogo',
-    );
-  }
-}
 
   async function updateMatch() {
-  if (!editingId) return;
+    if (!editingId) return;
 
-  if (!matchDate || !matchTime) {
-    alert('Informe a data e o horário do jogo');
-    return;
+    if (!matchDate || !matchTime) {
+      alert('Informe a data e o horário do jogo');
+      return;
+    }
+
+    try {
+      const fullMatchDate = `${matchDate}T${matchTime}:00`;
+
+      await api.patch(`/matches/${editingId}`, {
+        championshipId,
+        stadiumId,
+        homeTeam,
+        awayTeam,
+        missionCode,
+        matchDate: fullMatchDate,
+        status,
+      });
+
+      clearForm();
+      await loadMatches();
+
+      alert('Jogo atualizado com sucesso!');
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          'Erro ao atualizar jogo',
+      );
+    }
   }
-
-  try {
-    const fullMatchDate = `${matchDate}T${matchTime}:00`;
-
-    await api.patch(`/matches/${editingId}`, {
-      championshipId,
-      stadiumId,
-      homeTeam,
-      awayTeam,
-      missionCode,
-      matchDate: fullMatchDate,
-      status,
-    });
-
-    clearForm();
-    await loadMatches();
-
-    alert('Jogo atualizado com sucesso!');
-  } catch (error: any) {
-    alert(
-      error.response?.data?.message ||
-        'Erro ao atualizar jogo',
-    );
-  }
-}
 
   async function deleteMatch(id: string) {
     const confirmDelete = confirm(
@@ -318,111 +379,220 @@ export default function MatchesPage() {
 
   async function handleSubmit() {
     if (
-      !championshipId ||
-      !stadiumId ||
-      !homeTeam ||
-      !awayTeam ||
-      !matchDate
+      !championshipName.trim() ||
+      !stadiumName.trim() ||
+      !homeTeam.trim() ||
+      !awayTeam.trim() ||
+      !matchDate ||
+      !matchTime
     ) {
-      alert('Preencha todos os campos');
+      alert('Preencha todos os campos obrigatórios');
       return;
     }
 
-    if (homeTeam === awayTeam) {
+    const selectedChampionship =
+      findChampionshipByName(championshipName);
+
+    if (!selectedChampionship) {
+      alert('Selecione um campeonato válido da lista');
+      return;
+    }
+
+    const selectedStadium = findStadiumByLabel(stadiumName);
+
+    if (!selectedStadium) {
+      alert('Selecione um estádio válido da lista');
+      return;
+    }
+
+    if (!teamExists(homeTeam)) {
+      alert('Selecione um time mandante válido da lista');
+      return;
+    }
+
+    if (!teamExists(awayTeam)) {
+      alert('Selecione um time visitante válido da lista');
+      return;
+    }
+
+    if (
+      homeTeam.trim().toLowerCase() ===
+      awayTeam.trim().toLowerCase()
+    ) {
       alert(
         'Mandante e visitante não podem ser o mesmo time',
       );
       return;
     }
 
+    setChampionshipId(selectedChampionship.id);
+    setStadiumId(selectedStadium.id);
+
     if (editingId) {
-      await updateMatch();
+      await updateMatchWithIds(
+        selectedChampionship.id,
+        selectedStadium.id,
+      );
       return;
     }
 
-    await createMatch();
+    await createMatchWithIds(
+      selectedChampionship.id,
+      selectedStadium.id,
+    );
   }
 
-  function teamLabel(team: Team) {
-    return `${team.name} — ${team.city}/${team.state}`;
+  async function createMatchWithIds(
+    selectedChampionshipId: string,
+    selectedStadiumId: string,
+  ) {
+    if (!matchDate || !matchTime) {
+      alert('Informe a data e o horário do jogo');
+      return;
+    }
+
+    try {
+      const fullMatchDate = `${matchDate}T${matchTime}:00`;
+
+      await api.post('/matches', {
+        championshipId: selectedChampionshipId,
+        stadiumId: selectedStadiumId,
+        homeTeam,
+        awayTeam,
+        missionCode,
+        matchDate: fullMatchDate,
+      });
+
+      clearForm();
+      await loadMatches();
+
+      alert('Jogo cadastrado com sucesso!');
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          'Erro ao cadastrar jogo',
+      );
+    }
+  }
+
+  async function updateMatchWithIds(
+    selectedChampionshipId: string,
+    selectedStadiumId: string,
+  ) {
+    if (!editingId) return;
+
+    if (!matchDate || !matchTime) {
+      alert('Informe a data e o horário do jogo');
+      return;
+    }
+
+    try {
+      const fullMatchDate = `${matchDate}T${matchTime}:00`;
+
+      await api.patch(`/matches/${editingId}`, {
+        championshipId: selectedChampionshipId,
+        stadiumId: selectedStadiumId,
+        homeTeam,
+        awayTeam,
+        missionCode,
+        matchDate: fullMatchDate,
+        status,
+      });
+
+      clearForm();
+      await loadMatches();
+
+      alert('Jogo atualizado com sucesso!');
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          'Erro ao atualizar jogo',
+      );
+    }
   }
 
   function getStatusLabel(match: Match) {
-  if (match.status === 'IN_PROGRESS') {
-    return 'Em andamento';
+    if (match.status === 'IN_PROGRESS') {
+      return 'Em andamento';
+    }
+
+    if (match.status === 'CONTROL_DONE') {
+      return 'Controle realizado';
+    }
+
+    if (match.status === 'CANCELED') {
+      return 'Cancelado';
+    }
+
+    const confirmedCount =
+      match.officials?.filter(
+        (official) => official.confirmed === true,
+      ).length || 0;
+
+    if (confirmedCount === 1) {
+      return 'Escala aceita 1 DCO';
+    }
+
+    if (confirmedCount >= 2) {
+      return 'Escala aceita 2 DCO';
+    }
+
+    return 'Agendado';
   }
-
-  if (match.status === 'CONTROL_DONE') {
-    return 'Controle realizado';
-  }
-
-  if (match.status === 'CANCELED') {
-    return 'Cancelado';
-  }
-
-  const confirmedCount =
-    match.officials?.filter(
-      (official) => official.confirmed === true,
-    ).length || 0;
-
-  if (confirmedCount === 1) {
-    return 'Escala aceita 1 DCO';
-  }
-
-  if (confirmedCount >= 2) {
-    return 'Escala aceita 2 DCO';
-  }
-
-  return 'Agendado';
-}
 
   function getStatusClass(match: Match) {
-  if (match.status === 'IN_PROGRESS') {
-    return 'bg-yellow-100 text-yellow-700';
+    if (match.status === 'IN_PROGRESS') {
+      return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
+    }
+
+    if (match.status === 'CONTROL_DONE') {
+      return 'bg-emerald-50 text-[var(--cdb-green)] border border-emerald-100';
+    }
+
+    if (match.status === 'CANCELED') {
+      return 'bg-red-50 text-red-700 border border-red-100';
+    }
+
+    const confirmedCount =
+      match.officials?.filter(
+        (official) => official.confirmed === true,
+      ).length || 0;
+
+    if (confirmedCount === 1) {
+      return 'bg-blue-50 text-[var(--cdb-blue)] border border-blue-100';
+    }
+
+    if (confirmedCount >= 2) {
+      return 'bg-emerald-50 text-[var(--cdb-green)] border border-emerald-100';
+    }
+
+    return 'bg-slate-100 text-slate-700 border border-slate-200';
   }
-
-  if (match.status === 'CONTROL_DONE') {
-    return 'bg-green-100 text-green-700';
-  }
-
-  if (match.status === 'CANCELED') {
-    return 'bg-red-100 text-red-700';
-  }
-
-  const confirmedCount =
-    match.officials?.filter(
-      (official) => official.confirmed === true,
-    ).length || 0;
-
-  if (confirmedCount === 1) {
-    return 'bg-blue-100 text-blue-700';
-  }
-
-  if (confirmedCount >= 2) {
-    return 'bg-green-100 text-green-700';
-  }
-
-  return 'bg-slate-100 text-slate-700';
-}
 
   return (
-    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
+    <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">
-        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <header className="relative overflow-hidden bg-white border-b border-blue-100 px-4 lg:px-8 py-5 lg:py-7">
+          <div className="absolute inset-y-0 right-0 hidden lg:block w-96 bg-gradient-to-l from-blue-50 via-green-50 to-transparent" />
+
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <p className="text-sm text-slate-500 font-medium">
+              <p className="text-sm text-[var(--cdb-blue)] font-black uppercase tracking-[0.2em]">
                 Gestão operacional
               </p>
 
-              <h1 className="text-3xl lg:text-4xl font-black mt-1">
+              <h1 className="text-3xl lg:text-4xl font-black mt-1 text-slate-950">
                 Partidas
               </h1>
+
+              <p className="text-slate-500 mt-2">
+                Cadastre, acompanhe e opere os jogos do controle de doping.
+              </p>
             </div>
 
-            <div className="bg-slate-950 text-white px-4 lg:px-5 py-3 rounded-2xl font-semibold w-fit">
+            <div className="bg-[var(--cdb-blue)] text-white px-4 lg:px-5 py-3 rounded-2xl font-black w-fit shadow-sm">
               {matches.length} jogos
             </div>
           </div>
@@ -430,27 +600,27 @@ export default function MatchesPage() {
 
         <section className="p-4 lg:p-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-5 mb-6 lg:mb-8">
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
               <p className="text-slate-500 text-sm">
                 Total de jogos
               </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
                 {matches.length}
               </h2>
             </div>
 
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
               <p className="text-slate-500 text-sm">
                 Agendados
               </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-slate-700">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
                 {scheduledMatches}
               </h2>
             </div>
 
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
               <p className="text-slate-500 text-sm">
                 Em andamento
               </p>
@@ -460,251 +630,283 @@ export default function MatchesPage() {
               </h2>
             </div>
 
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
               <p className="text-slate-500 text-sm">
                 Finalizados
               </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-green-600">
+              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
                 {completedMatches}
               </h2>
             </div>
           </div>
-          {isAdmin && (
-  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6 mb-6 lg:mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-              <div>
-                <h2 className="text-2xl font-black">
-                  {editingId
-                    ? 'Editar jogo'
-                    : 'Cadastrar jogo'}
-                </h2>
 
-                <p className="text-slate-500 mt-1">
-                  Gerencie os jogos operacionais do sistema.
-                </p>
+          {isAdmin && (
+            <div className="bg-white rounded-3xl border border-blue-100 shadow-sm p-4 lg:p-6 mb-6 lg:mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                <div>
+                  <h2 className="text-2xl font-black">
+                    {editingId
+                      ? 'Editar jogo'
+                      : 'Cadastrar jogo'}
+                  </h2>
+
+                  <p className="text-slate-500 mt-1">
+                    Digite e selecione os dados das listas para cadastrar a partida.
+                  </p>
+                </div>
+
+                {editingId && (
+                  <span className="bg-blue-50 text-[var(--cdb-blue)] border border-blue-100 px-4 py-2 rounded-2xl text-sm font-black">
+                    Modo edição
+                  </span>
+                )}
               </div>
 
-              {editingId && (
-                <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-2xl text-sm font-semibold">
-                  Modo edição
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-              <input
-  className="border border-slate-200 rounded-2xl px-4 py-3"
-  placeholder="Código da missão"
-  value={missionCode}
-  onChange={(e) => setMissionCode(e.target.value)}
-/>
-
-
-
-              <select
-                className="border border-slate-200 rounded-2xl px-4 py-3"
-                value={championshipId}
-                onChange={(e) =>
-                  setChampionshipId(e.target.value)
-                }
-              >
-                <option value="">
-                  Campeonato
-                </option>
-
+              <datalist id="championships-list">
                 {championships.map((championship) => (
                   <option
                     key={championship.id}
-                    value={championship.id}
-                  >
-                    {championship.name}
-                  </option>
+                    value={championship.name}
+                  />
                 ))}
-              </select>
+              </datalist>
 
-              <select
-                className="border border-slate-200 rounded-2xl px-4 py-3"
-                value={stadiumId}
-                onChange={(e) =>
-                  setStadiumId(e.target.value)
-                }
-              >
-                <option value="">
-                  Estádio
-                </option>
-
+              <datalist id="stadiums-list">
                 {stadiums.map((stadium) => (
                   <option
                     key={stadium.id}
-                    value={stadium.id}
-                  >
-                    {stadium.name} — {stadium.city}/
-                    {stadium.state}
-                  </option>
+                    value={stadiumLabel(stadium)}
+                  />
                 ))}
-              </select>
+              </datalist>
 
-              <select
-                className="border border-slate-200 rounded-2xl px-4 py-3"
-                value={homeTeam}
-                onChange={(e) =>
-                  setHomeTeam(e.target.value)
-                }
-              >
-                <option value="">
-                  Mandante
-                </option>
-
+              <datalist id="teams-list">
                 {teams.map((team) => (
                   <option
                     key={team.id}
                     value={team.name}
-                  >
-                    {teamLabel(team)}
-                  </option>
+                    label={teamLabel(team)}
+                  />
                 ))}
-              </select>
+              </datalist>
 
-              <select
-                className="border border-slate-200 rounded-2xl px-4 py-3"
-                value={awayTeam}
-                onChange={(e) =>
-                  setAwayTeam(e.target.value)
-                }
-              >
-                <option value="">
-                  Visitante
-                </option>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3">
+                <div className="xl:col-span-2">
+                  <input
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    placeholder="Código da missão"
+                    value={missionCode}
+                    onChange={(e) => setMissionCode(e.target.value)}
+                  />
 
-                {teams.map((team) => (
-                  <option
-                    key={team.id}
-                    value={team.name}
-                  >
-                    {teamLabel(team)}
-                  </option>
-                ))}
-              </select>
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Informe o código da missão.
+                  </p>
+                </div>
 
-              
+                <div className="xl:col-span-5">
+                  <input
+                    list="championships-list"
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    placeholder="Digite o campeonato"
+                    value={championshipName}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setChampionshipName(value);
 
-<input
-  type="date"
-  className="border border-slate-200 rounded-2xl px-4 py-3"
-  value={matchDate}
-  onChange={(e) => setMatchDate(e.target.value)}
-/>
+                      const selected =
+                        findChampionshipByName(value);
 
-<input
-  type="time"
-  className="border border-slate-200 rounded-2xl px-4 py-3"
-  value={matchTime}
-  onChange={(e) => setMatchTime(e.target.value)}
-/>
-            </div>
+                      setChampionshipId(selected?.id || '');
+                    }}
+                  />
 
-            {editingId && (
-              <div className="mt-4">
-                <select
-                  className="border border-slate-200 rounded-2xl px-4 py-3"
-                  value={status}
-                  onChange={(e) =>
-                    setStatus(e.target.value)
-                  }
-                >
-                  <option value="SCHEDULED">
-                    Agendado
-                  </option>
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Digite e selecione um campeonato da lista.
+                  </p>
+                </div>
 
-                  <option value="SCALE_ACCEPTED">
-                    Escala aceita
-                  </option>
+                <div className="xl:col-span-5">
+                  <input
+                    list="stadiums-list"
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    placeholder="Digite o estádio"
+                    value={stadiumName}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStadiumName(value);
 
-                  <option value="IN_PROGRESS">
-                    Em andamento
-                  </option>
+                      const selected = findStadiumByLabel(value);
 
-                  <option value="CONTROL_DONE">
-                    Controle realizado
-                  </option>
+                      setStadiumId(selected?.id || '');
+                    }}
+                  />
 
-                  <option value="CANCELED">
-                    Cancelado
-                  </option>
-                </select>
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Digite e selecione um estádio da lista.
+                  </p>
+                </div>
+
+                <div className="xl:col-span-3">
+                  <input
+                    list="teams-list"
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    placeholder="Digite o mandante"
+                    value={homeTeam}
+                    onChange={(e) =>
+                      setHomeTeam(e.target.value)
+                    }
+                  />
+
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Digite e selecione um time da lista.
+                  </p>
+                </div>
+
+                <div className="xl:col-span-3">
+                  <input
+                    list="teams-list"
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    placeholder="Digite o visitante"
+                    value={awayTeam}
+                    onChange={(e) =>
+                      setAwayTeam(e.target.value)
+                    }
+                  />
+
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Digite e selecione um time da lista.
+                  </p>
+                </div>
+
+                <div className="xl:col-span-3">
+                  <input
+                    type="date"
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    value={matchDate}
+                    onChange={(e) => setMatchDate(e.target.value)}
+                  />
+
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Selecione a data do jogo.
+                  </p>
+                </div>
+
+                <div className="xl:col-span-3">
+                  <input
+                    type="time"
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    value={matchTime}
+                    onChange={(e) => setMatchTime(e.target.value)}
+                  />
+
+                  <p className="text-xs text-slate-400 mt-1 px-2">
+                    Selecione o horário do jogo.
+                  </p>
+                </div>
               </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-3 mt-5">
-              <button
-                onClick={handleSubmit}
-                className="bg-slate-950 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-slate-800 transition text-center"
-              >
-                {editingId
-                  ? 'Salvar edição'
-                  : 'Cadastrar jogo'}
-              </button>
 
               {editingId && (
-                <button
-                  onClick={clearForm}
-                  className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold text-center"
-                >
-                  Cancelar
-                </button>
+                <div className="mt-4">
+                  <select
+                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30"
+                    value={status}
+                    onChange={(e) =>
+                      setStatus(e.target.value)
+                    }
+                  >
+                    <option value="SCHEDULED">
+                      Agendado
+                    </option>
+
+                    <option value="SCALE_ACCEPTED">
+                      Escala aceita
+                    </option>
+
+                    <option value="IN_PROGRESS">
+                      Em andamento
+                    </option>
+
+                    <option value="CONTROL_DONE">
+                      Controle realizado
+                    </option>
+
+                    <option value="CANCELED">
+                      Cancelado
+                    </option>
+                  </select>
+                </div>
               )}
+
+              <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                <button
+                  onClick={handleSubmit}
+                  className="bg-[var(--cdb-blue)] text-white px-6 py-3 rounded-2xl font-black hover:brightness-90 transition text-center shadow-sm"
+                >
+                  {editingId
+                    ? 'Salvar edição'
+                    : 'Cadastrar jogo'}
+                </button>
+
+                {editingId && (
+                  <button
+                    onClick={clearForm}
+                    className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold text-center"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-)}
-          
+          )}
 
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6">
-             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
-    <div>
-      <h2 className="text-2xl font-black">Jogos cadastrados</h2>
-      <p className="text-slate-500 mt-1">
-        Controle operacional das partidas.
-      </p>
-    </div>
+          <div className="bg-white rounded-3xl border border-blue-100 shadow-sm p-4 lg:p-6">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-black text-slate-950">Jogos cadastrados</h2>
+                <p className="text-slate-500 mt-1">
+                  Controle operacional das partidas.
+                </p>
+              </div>
 
-    <input
-      className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 w-full xl:w-[420px]"
-      placeholder="Buscar por missão, jogo, estádio ou campeonato..."
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-    />
-  </div>
+              <input
+                className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 bg-slate-50 w-full xl:w-[420px]"
+                placeholder="Buscar por missão, jogo, estádio ou campeonato..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
 
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-    <button
-      onClick={() => setActiveTab('ACTIVE')}
-      className={`px-5 py-3 rounded-2xl font-semibold transition ${
-        activeTab === 'ACTIVE'
-          ? 'bg-slate-950 text-white'
-          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-      }`}
-    >
-      Jogos ativos ({activeMatches})
-    </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              <button
+                onClick={() => setActiveTab('ACTIVE')}
+                className={`px-5 py-3 rounded-2xl font-semibold transition ${
+                  activeTab === 'ACTIVE'
+                    ? 'bg-[var(--cdb-blue)] text-white shadow-sm'
+                    : 'bg-blue-50 text-[var(--cdb-blue)] hover:bg-blue-100'
+                }`}
+              >
+                Jogos ativos ({activeMatches})
+              </button>
 
-    <button
-      onClick={() => setActiveTab('DONE')}
-      className={`px-5 py-3 rounded-2xl font-semibold transition ${
-        activeTab === 'DONE'
-          ? 'bg-green-600 text-white'
-          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-      }`}
-    >
-      Jogos concluídos ({doneMatches})
-    </button>
-  </div>
+              <button
+                onClick={() => setActiveTab('DONE')}
+                className={`px-5 py-3 rounded-2xl font-semibold transition ${
+                  activeTab === 'DONE'
+                    ? 'bg-[var(--cdb-green)] text-white shadow-sm'
+                    : 'bg-blue-50 text-[var(--cdb-blue)] hover:bg-blue-100'
+                }`}
+              >
+                Jogos concluídos ({doneMatches})
+              </button>
+            </div>
 
             <div className="lg:hidden space-y-4">
               {filteredMatches.map((match) => (
                 <div
                   key={match.id}
-                  className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm"
+                  className="bg-white border border-blue-100 rounded-3xl p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-3 mb-4">
                     <div className="flex items-start justify-between gap-3">
@@ -733,12 +935,12 @@ export default function MatchesPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 text-sm">
-                    <div className="bg-slate-50 rounded-2xl p-3">
+                    <div className="bg-blue-50/50 rounded-2xl p-3">
                       <p className="text-slate-500">Estádio</p>
                       <strong>🏟️ {match.stadium.name}</strong>
                     </div>
 
-                    <div className="bg-slate-50 rounded-2xl p-3">
+                    <div className="bg-blue-50/50 rounded-2xl p-3">
                       <p className="text-slate-500">Cidade</p>
                       <strong>
                         {match.stadium.city}/{match.stadium.state}
@@ -746,12 +948,12 @@ export default function MatchesPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-slate-50 rounded-2xl p-3">
+                      <div className="bg-blue-50/50 rounded-2xl p-3">
                         <p className="text-slate-500">Data</p>
                         <strong>{formatDate(match.matchDate)}</strong>
                       </div>
 
-                      <div className="bg-slate-50 rounded-2xl p-3">
+                      <div className="bg-blue-50/50 rounded-2xl p-3">
                         <p className="text-slate-500">Horário</p>
                         <strong>{formatTime(match.matchDate)}</strong>
                       </div>
@@ -761,7 +963,7 @@ export default function MatchesPage() {
                   <div className="flex flex-col gap-2 mt-5">
                     <Link
                       href={`/dashboard/matches/${match.id}`}
-                      className="bg-slate-950 text-white text-center px-4 py-3 rounded-2xl text-sm font-semibold"
+                      className="bg-[var(--cdb-blue)] text-white text-center px-4 py-3 rounded-2xl text-sm font-semibold"
                     >
                       Abrir operação
                     </Link>
@@ -770,7 +972,7 @@ export default function MatchesPage() {
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           onClick={() => startEdit(match)}
-                          className="bg-blue-600 text-white px-4 py-3 rounded-2xl text-sm font-semibold"
+                          className="bg-[var(--cdb-blue)] text-white px-4 py-3 rounded-2xl text-sm font-semibold"
                         >
                           Editar
                         </button>
@@ -791,7 +993,7 @@ export default function MatchesPage() {
             <div className="hidden lg:block overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
+                  <tr className="border-b border-blue-100 text-left text-sm text-slate-500">
                     <th className="py-4 pr-4">
                       Jogo
                     </th>
@@ -822,7 +1024,7 @@ export default function MatchesPage() {
                   {filteredMatches.map((match) => (
                     <tr
                       key={match.id}
-                      className="border-b border-slate-100 hover:bg-slate-50 transition"
+                      className="border-b border-slate-100 hover:bg-blue-50/40 transition"
                     >
                       <td className="py-5 pr-4">
                         <div className="font-black text-slate-900">
@@ -850,41 +1052,41 @@ export default function MatchesPage() {
 
                       <td className="py-5 pr-4">
                         <span
-  className={`${getStatusClass(
-    match,
-  )} px-3 py-1 rounded-full text-sm font-semibold`}
->
-  {getStatusLabel(match)}
-</span>
+                          className={`${getStatusClass(
+                            match,
+                          )} px-3 py-1 rounded-full text-sm font-semibold`}
+                        >
+                          {getStatusLabel(match)}
+                        </span>
                       </td>
 
                       <td className="py-5 pr-4">
                         <div className="flex gap-2 flex-wrap">
-  <Link
-    href={`/dashboard/matches/${match.id}`}
-    className="bg-slate-950 text-white px-4 py-2 rounded-xl text-sm font-semibold"
-  >
-    Operação
-  </Link>
+                          <Link
+                            href={`/dashboard/matches/${match.id}`}
+                            className="bg-[var(--cdb-blue)] text-white px-4 py-2 rounded-xl text-sm font-semibold"
+                          >
+                            Operação
+                          </Link>
 
-  {isAdmin && (
-    <>
-      <button
-        onClick={() => startEdit(match)}
-        className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold"
-      >
-        Editar
-      </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => startEdit(match)}
+                                className="bg-[var(--cdb-blue)] text-white px-4 py-2 rounded-xl text-sm font-semibold"
+                              >
+                                Editar
+                              </button>
 
-      <button
-        onClick={() => deleteMatch(match.id)}
-        className="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-semibold"
-      >
-        Excluir
-      </button>
-    </>
-  )}
-</div>
+                              <button
+                                onClick={() => deleteMatch(match.id)}
+                                className="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-semibold"
+                              >
+                                Excluir
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

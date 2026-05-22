@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #111827;
+
+  --cdb-blue: #233f8f;
+  --cdb-blue-dark: #10296f;
+  --cdb-blue-soft: #eaf0ff;
+  --cdb-green: #00885f;
+  --cdb-green-dark: #006c4c;
+  --cdb-green-soft: #e8fff6;
+  --cdb-yellow: #f8c900;
+  --cdb-yellow-soft: #fff7cc;
+  --cdb-dark: #111827;
+  --cdb-light: #f8fafc;
+  --cdb-card: #ffffff;
+  --cdb-border: #dbe4f0;
 }
 
 @theme inline {
@@ -12,15 +25,60 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--cdb-light);
 }
 
 body {
-  background: var(--background);
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(248, 201, 0, 0.12), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(0, 136, 95, 0.12), transparent 30rem),
+    var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--cdb-yellow);
+  color: var(--cdb-blue-dark);
+}
+
+.cdb-login-bg {
+  background:
+    linear-gradient(135deg, rgba(35, 63, 143, 0.96), rgba(16, 41, 111, 0.92)),
+    radial-gradient(circle at 20% 20%, rgba(248, 201, 0, 0.45), transparent 18rem),
+    radial-gradient(circle at 80% 80%, rgba(0, 136, 95, 0.45), transparent 22rem);
+  position: relative;
+  overflow: hidden;
+}
+
+.cdb-login-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, transparent 0 12%, rgba(0, 136, 95, 0.86) 12% 17%, transparent 17% 100%),
+    linear-gradient(140deg, transparent 0 68%, rgba(248, 201, 0, 0.86) 68% 73%, transparent 73% 100%);
+  opacity: 0.95;
+}
+
+.cdb-card {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(219, 228, 240, 0.95);
+  box-shadow: 0 24px 80px rgba(16, 41, 111, 0.18);
+  backdrop-filter: blur(14px);
 }

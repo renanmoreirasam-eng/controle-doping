@@ -62,26 +62,47 @@ export function Sidebar() {
     setUser(getUser());
   }, []);
 
-  const rawRole =
-    user?.role ||
-    user?.user?.role ||
-    '';
+  const rawRole = user?.role || user?.user?.role || '';
 
-  const userRole = String(rawRole)
-    .trim()
-    .toUpperCase();
+  const userRole = String(rawRole).trim().toUpperCase();
 
-  const menus = allMenus.filter((menu) =>
-    menu.roles.includes(userRole),
-  );
+  const menus = allMenus.filter((menu) => menu.roles.includes(userRole));
+
+  function renderLogo(compact = false) {
+    return (
+      <div className="flex items-center gap-3">
+        <div className="bg-white rounded-2xl p-2 shadow-lg shadow-blue-950/20">
+          <img
+            src="/CDB_logo_colorido_retangular.png"
+            alt="Controle de Doping Brasil"
+            className={`${compact ? 'h-9' : 'h-12'} w-auto object-contain`}
+          />
+        </div>
+
+        {!compact && (
+          <div>
+            <h1 className="text-xl font-black leading-tight text-white">
+              CDB
+            </h1>
+
+            <p className="text-blue-100 text-xs font-semibold tracking-wide">
+              Controle de Doping Brasil
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   function renderMenu(onNavigate?: () => void) {
     return (
       <nav className="flex flex-col gap-2">
         {menus.map((menu) => {
           const active =
-            pathname === menu.href ||
-            pathname.startsWith(`${menu.href}/`);
+  menu.href === '/dashboard'
+    ? pathname === '/dashboard'
+    : pathname === menu.href ||
+      pathname.startsWith(`${menu.href}/`);
 
           return (
             <Link
@@ -92,27 +113,25 @@ export function Sidebar() {
                 group flex items-center gap-3 px-4 py-3 rounded-2xl transition-all
                 ${
                   active
-                    ? 'bg-white text-slate-950 shadow-lg'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    ? 'bg-[var(--cdb-yellow)] text-slate-950 shadow-xl shadow-blue-950/20'
+                    : 'text-blue-50 hover:bg-white/12 hover:text-white'
                 }
               `}
             >
               <span
                 className={`
-                  w-9 h-9 rounded-xl flex items-center justify-center text-base
+                  w-9 h-9 rounded-xl flex items-center justify-center text-base transition
                   ${
                     active
-                      ? 'bg-slate-100'
-                      : 'bg-slate-900 group-hover:bg-slate-700'
+                      ? 'bg-white/80'
+                      : 'bg-white/10 group-hover:bg-white/20'
                   }
                 `}
               >
                 {menu.icon}
               </span>
 
-              <span className="font-semibold">
-                {menu.name}
-              </span>
+              <span className="font-semibold">{menu.name}</span>
             </Link>
           );
         })}
@@ -123,36 +142,23 @@ export function Sidebar() {
   if (!mounted) {
     return (
       <>
-        <div className="lg:hidden h-16 bg-slate-950" />
-
-        <aside className="hidden lg:block w-72 bg-slate-950 min-h-screen" />
+        <div className="lg:hidden h-16 bg-[var(--cdb-blue)]" />
+        <aside className="hidden lg:block w-72 bg-[var(--cdb-blue)] min-h-screen" />
       </>
     );
   }
 
   return (
     <>
-      <header className="lg:hidden bg-slate-950 text-white px-4 py-3 sticky top-0 z-50 border-b border-slate-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white text-slate-950 flex items-center justify-center font-black">
-              CD
-            </div>
-
-            <div>
-              <h1 className="text-lg font-black leading-tight">
-                Controle Doping
-              </h1>
-
-              <p className="text-xs text-slate-400">
-                {userRole || 'Usuário'}
-              </p>
-            </div>
+      <header className="lg:hidden bg-[var(--cdb-blue)] text-white px-4 py-3 sticky top-0 z-50 border-b border-white/10 shadow-lg shadow-blue-950/20">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {renderLogo(true)}
           </div>
 
           <button
             onClick={() => setOpen(true)}
-            className="bg-slate-800 px-4 py-2 rounded-xl font-semibold"
+            className="bg-white/12 hover:bg-white/20 px-4 py-2 rounded-xl font-semibold transition"
           >
             Menu
           </button>
@@ -164,47 +170,31 @@ export function Sidebar() {
           <button
             aria-label="Fechar menu"
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           />
 
-          <aside className="absolute left-0 top-0 h-full w-[85%] max-w-80 bg-slate-950 text-white p-5 shadow-2xl overflow-y-auto">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-white text-slate-950 flex items-center justify-center font-black text-xl">
-                  CD
-                </div>
-
-                <div>
-                  <h1 className="text-xl font-black leading-tight">
-                    Controle
-                  </h1>
-
-                  <p className="text-slate-400 text-sm">
-                    Doping System
-                  </p>
-                </div>
-              </div>
+          <aside className="absolute left-0 top-0 h-full w-[88%] max-w-86 bg-[var(--cdb-blue)] text-white p-5 shadow-2xl overflow-y-auto">
+            <div className="flex items-center justify-between gap-4 mb-8">
+              {renderLogo()}
 
               <button
                 onClick={() => setOpen(false)}
-                className="bg-slate-800 px-3 py-2 rounded-xl"
+                className="bg-white/12 hover:bg-white/20 px-3 py-2 rounded-xl transition"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 font-semibold px-3 mb-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-blue-100 font-semibold px-3 mb-4">
               Menu
             </p>
 
             {renderMenu(() => setOpen(false))}
 
-            <div className="mt-8 bg-slate-900 border border-slate-800 rounded-3xl p-4">
-              <p className="text-sm font-bold">
-                {user?.name || 'Usuário'}
-              </p>
+            <div className="mt-8 bg-white/10 border border-white/15 rounded-3xl p-4">
+              <p className="text-sm font-bold">{user?.name || 'Usuário'}</p>
 
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-blue-100 mt-1">
                 Perfil: {userRole || 'Não identificado'}
               </p>
 
@@ -219,39 +209,26 @@ export function Sidebar() {
         </div>
       )}
 
-      <aside className="hidden lg:block w-72 bg-slate-950 text-white min-h-screen px-5 py-6 border-r border-slate-800 shrink-0">
-        <div className="mb-10">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white text-slate-950 flex items-center justify-center font-black text-xl">
-              CD
-            </div>
+      <aside className="hidden lg:block w-72 bg-[var(--cdb-blue)] text-white min-h-screen px-5 py-6 border-r border-white/10 shrink-0 relative overflow-hidden">
+        <div className="absolute -right-16 -top-16 w-44 h-44 rounded-full bg-[var(--cdb-green)]/25 blur-2xl" />
+        <div className="absolute -left-20 bottom-24 w-48 h-48 rounded-full bg-[var(--cdb-yellow)]/25 blur-2xl" />
 
-            <div>
-              <h1 className="text-xl font-black leading-tight">
-                Controle
-              </h1>
-
-              <p className="text-slate-400 text-sm">
-                Doping System
-              </p>
-            </div>
-          </div>
+        <div className="relative mb-10">
+          {renderLogo()}
         </div>
 
-        <div className="mb-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 font-semibold px-3">
+        <div className="relative mb-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-blue-100 font-semibold px-3">
             Menu
           </p>
         </div>
 
-        {renderMenu()}
+        <div className="relative">{renderMenu()}</div>
 
-        <div className="mt-10 bg-slate-900 border border-slate-800 rounded-3xl p-4">
-          <p className="text-sm font-bold">
-            {user?.name || 'Usuário'}
-          </p>
+        <div className="relative mt-10 bg-white/10 border border-white/15 rounded-3xl p-4">
+          <p className="text-sm font-bold">{user?.name || 'Usuário'}</p>
 
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-blue-100 mt-1">
             Perfil: {userRole || 'Não identificado'}
           </p>
 
