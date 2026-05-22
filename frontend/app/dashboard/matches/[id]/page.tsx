@@ -41,6 +41,17 @@ type Draw = {
   createdAt: string;
 };
 
+type DrawForm = {
+  homeExamNumber: string;
+  homeExamName: string;
+  homeReserveNumber: string;
+  homeReserveName: string;
+  awayExamNumber: string;
+  awayExamName: string;
+  awayReserveNumber: string;
+  awayReserveName: string;
+};
+
 type Substitution = {
   id: string;
   matchId: string;
@@ -133,6 +144,16 @@ export default function MatchDetailsPage() {
   const [playerNickname, setPlayerNickname] = useState('');
   const [playerType, setPlayerType] = useState<'EXAME' | 'RESERVA'>('EXAME');
   const [drawnPlayers, setDrawnPlayers] = useState<DrawPlayer[]>([]);
+  const [drawForm, setDrawForm] = useState<DrawForm>({
+    homeExamNumber: '',
+    homeExamName: '',
+    homeReserveNumber: '',
+    homeReserveName: '',
+    awayExamNumber: '',
+    awayExamName: '',
+    awayReserveNumber: '',
+    awayReserveName: '',
+  });
 
   const [subTeam, setSubTeam] = useState<'HOME' | 'AWAY'>('HOME');
   const [playerOutNumber, setPlayerOutNumber] = useState('');
@@ -200,6 +221,8 @@ export default function MatchDetailsPage() {
 
   const hasDrawDone = draws.length > 0;
 
+  const savedDrawPlayers = draws.flatMap((draw) => draw.players);
+
   const canDoCheckIn =
     !!match && !isControlDone && !isCheckedIn;
 
@@ -231,6 +254,21 @@ export default function MatchDetailsPage() {
   function wasSubstituted(player: DrawPlayer) {
     return substitutions.find(
       (sub) => sub.team === player.team && sub.playerOutNumber === player.number,
+    );
+  }
+
+  function updateDrawForm(field: keyof DrawForm, value: string) {
+    if (isControlDone || hasDrawDone) return;
+
+    setDrawForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function getSavedDrawPlayer(team: 'HOME' | 'AWAY', type: 'EXAME' | 'RESERVA') {
+    return savedDrawPlayers.find(
+      (player) => player.team === team && player.type === type,
     );
   }
 
@@ -548,19 +586,94 @@ export default function MatchDetailsPage() {
       return;
     }
 
-    if (drawnPlayers.length === 0) {
-      alert('Adicione pelo menos um atleta sorteado');
+    if (hasDrawDone) {
+      alert('Sorteio já realizado para este jogo.');
       return;
+    }
+
+    const homeExamNumber = drawForm.homeExamNumber.trim();
+    const homeExamName = drawForm.homeExamName.trim();
+    const homeReserveNumber = drawForm.homeReserveNumber.trim();
+    const homeReserveName = drawForm.homeReserveName.trim();
+
+    const awayExamNumber = drawForm.awayExamNumber.trim();
+    const awayExamName = drawForm.awayExamName.trim();
+    const awayReserveNumber = drawForm.awayReserveNumber.trim();
+    const awayReserveName = drawForm.awayReserveName.trim();
+
+    if (!homeExamNumber || !homeExamName || !awayExamNumber || !awayExamName) {
+      alert('Informe o número e o nome do Principal Exame de cada time.');
+      return;
+    }
+
+    if (
+      (homeReserveNumber && !homeReserveName) ||
+      (!homeReserveNumber && homeReserveName)
+    ) {
+      alert('Para o Reserva do mandante, informe número e nome ou deixe ambos em branco.');
+      return;
+    }
+
+    if (
+      (awayReserveNumber && !awayReserveName) ||
+      (!awayReserveNumber && awayReserveName)
+    ) {
+      alert('Para o Reserva do visitante, informe número e nome ou deixe ambos em branco.');
+      return;
+    }
+
+    const players: DrawPlayer[] = [
+      {
+        team: 'HOME',
+        number: homeExamNumber,
+        name: homeExamName,
+        type: 'EXAME',
+      },
+      {
+        team: 'AWAY',
+        number: awayExamNumber,
+        name: awayExamName,
+        type: 'EXAME',
+      },
+    ];
+
+    if (homeReserveNumber && homeReserveName) {
+      players.push({
+        team: 'HOME',
+        number: homeReserveNumber,
+        name: homeReserveName,
+        type: 'RESERVA',
+      });
+    }
+
+    if (awayReserveNumber && awayReserveName) {
+      players.push({
+        team: 'AWAY',
+        number: awayReserveNumber,
+        name: awayReserveName,
+        type: 'RESERVA',
+      });
     }
 
     try {
       await api.post('/draws', {
         matchId,
-        players: drawnPlayers,
+        players,
       });
 
       await api.post(`/matches/${matchId}/operational-logs`, {
         step: 'DRAW_DONE',
+      });
+
+      setDrawForm({
+        homeExamNumber: '',
+        homeExamName: '',
+        homeReserveNumber: '',
+        homeReserveName: '',
+        awayExamNumber: '',
+        awayExamName: '',
+        awayReserveNumber: '',
+        awayReserveName: '',
       });
 
       setDrawnPlayers([]);
@@ -568,9 +681,9 @@ export default function MatchDetailsPage() {
       await loadDraws();
       await loadOperationalLogs();
 
-      alert('Registro salvo com sucesso!');
+      alert('Sorteio realizado com sucesso!');
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao salvar registro dos atletas');
+      alert(error.response?.data?.message || 'Erro ao salvar sorteio dos atletas');
     }
   }
 
@@ -764,6 +877,72 @@ function formatTimeOnly(date: string) {
         {getStatusLabel(match.status)}
       </span>
     </div>
+
+    {hasDrawDone && (
+      <div className="border border-green-200 rounded-3xl p-5 bg-green-50 md:col-span-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <div>
+            <p className="text-slate-500 text-sm">
+              Sorteio realizado
+            </p>
+
+            <strong className="text-lg text-green-800">
+              Atletas sorteados para exame
+            </strong>
+          </div>
+
+          <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
+            Salvo
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {(['HOME', 'AWAY'] as const).map((team) => {
+            const examPlayer = getSavedDrawPlayer(team, 'EXAME');
+            const reservePlayer = getSavedDrawPlayer(team, 'RESERVA');
+
+            return (
+              <div
+                key={team}
+                className="bg-white border border-green-100 rounded-2xl p-4"
+              >
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold mb-3">
+                  {getTeamName(team)}
+                </p>
+
+                {examPlayer && (
+                  <div className="mb-3">
+                    <p className="text-xs text-red-600 font-bold uppercase">
+                      Principal exame
+                    </p>
+
+                    <p className="font-black text-slate-900">
+                      Nº {examPlayer.number} - {examPlayer.name}
+                    </p>
+                  </div>
+                )}
+
+                {reservePlayer ? (
+                  <div>
+                    <p className="text-xs text-yellow-600 font-bold uppercase">
+                      Reserva
+                    </p>
+
+                    <p className="font-black text-slate-900">
+                      Nº {reservePlayer.number} - {reservePlayer.name}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400">
+                    Reserva não informado.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
   </div>
 </div>
 
@@ -986,200 +1165,217 @@ function formatTimeOnly(date: string) {
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl shadow p-8">
-              <h2 className="text-2xl font-bold mb-6">
-                Registro dos atletas sorteados
-              </h2>
+            {!hasDrawDone && (
+              <div className="bg-white rounded-3xl shadow p-5 lg:p-8">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold">
+                      Registro dos atletas sorteados
+                    </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-5">
-                <select
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  value={playerTeam}
-                  disabled={isControlDone}
-                  onChange={(e) =>
-                    setPlayerTeam(e.target.value as 'HOME' | 'AWAY')
-                  }
-                >
-                  <option value="HOME">{match.homeTeam}</option>
-                  <option value="AWAY">{match.awayTeam}</option>
-                </select>
+                    <p className="text-slate-500 mt-1">
+                      Preencha os atletas principais de cada time. O reserva é opcional.
+                    </p>
+                  </div>
 
-                <input
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  placeholder="Número"
-                  value={playerNumber}
-                  disabled={isControlDone}
-                  onChange={(e) => setPlayerNumber(e.target.value)}
-                />
+                  <span className="bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
+                    Sorteio pendente
+                  </span>
+                </div>
 
-                <input
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  placeholder="Nome atleta"
-                  value={playerName}
-                  disabled={isControlDone}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                />
-
-                <input
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  placeholder="Apelido opcional"
-                  value={playerNickname}
-                  disabled={isControlDone}
-                  onChange={(e) => setPlayerNickname(e.target.value)}
-                />
-
-                <select
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  value={playerType}
-                  disabled={isControlDone}
-                  onChange={(e) =>
-                    setPlayerType(e.target.value as 'EXAME' | 'RESERVA')
-                  }
-                >
-                  <option value="EXAME">Principal exame</option>
-                  <option value="RESERVA">Reserva</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3 mb-6 flex-wrap">
-                <button
-                  disabled={isControlDone}
-                  onClick={addPlayer}
-                  className="bg-slate-950 disabled:bg-slate-300 text-white px-5 py-3 rounded-xl"
-                >
-                  Adicionar atleta
-                </button>
-
-                <button
-                  disabled={isControlDone}
-                  onClick={saveDraw}
-                  className="bg-green-600 disabled:bg-slate-300 text-white px-5 py-3 rounded-xl"
-                >
-                  Salvar registro
-                </button>
-              </div>
-
-              <h3 className="font-bold mb-3">Atletas adicionados</h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                {drawnPlayers.map((player, index) => {
-                  const substitution = wasSubstituted(player);
-
-                  return (
-                    <div
-                      key={`${player.number}-${index}`}
-                      className={`rounded-2xl p-5 border ${
-                        player.type === 'EXAME'
-                          ? 'bg-red-50 border-red-200'
-                          : 'bg-yellow-50 border-yellow-200'
-                      }`}
-                    >
-                      <p className="text-sm text-slate-500">
-                        {getTeamName(player.team)}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
+                    <div className="mb-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                        Mandante
                       </p>
 
-                      <div className="text-4xl font-bold mt-2">
-                        Nº {player.number}
+                      <h3 className="text-xl font-black text-slate-900">
+                        {match.homeTeam}
+                      </h3>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="bg-white border border-red-100 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <h4 className="font-black text-red-700">
+                            Principal Exame
+                          </h4>
+
+                          <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                            Obrigatório
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Número"
+                            value={drawForm.homeExamNumber}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('homeExamNumber', e.target.value)
+                            }
+                          />
+
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Nome do atleta"
+                            value={drawForm.homeExamName}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('homeExamName', e.target.value)
+                            }
+                          />
+                        </div>
                       </div>
 
-                      <h4 className="text-xl font-bold mt-2">{player.name}</h4>
+                      <div className="bg-white border border-yellow-100 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <h4 className="font-black text-yellow-700">
+                            Reserva
+                          </h4>
 
-                      {player.nickname && (
-                        <p className="text-slate-500 mt-1">
-                          Apelido: {player.nickname}
-                        </p>
-                      )}
-
-                      <span
-                        className={`inline-block mt-4 px-3 py-1 rounded-full text-sm ${
-                          player.type === 'EXAME'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}
-                      >
-                        {player.type === 'EXAME' ? 'Principal exame' : 'Reserva'}
-                      </span>
-
-                      {substitution && (
-                        <div className="mt-4 bg-orange-100 text-orange-800 border border-orange-200 rounded-xl p-3 text-sm">
-                          Atenção: atleta substituído. Entrou Nº{' '}
-                          {substitution.playerInNumber}.
+                          <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                            Opcional
+                          </span>
                         </div>
-                      )}
 
-                      <button
-                        disabled={isControlDone}
-                        onClick={() => removePendingPlayer(index)}
-                        className="mt-4 bg-slate-200 disabled:bg-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm"
-                      >
-                        Remover da lista
-                      </button>
-                    </div>
-                  );
-                })}
+                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Número"
+                            value={drawForm.homeReserveNumber}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('homeReserveNumber', e.target.value)
+                            }
+                          />
 
-                {drawnPlayers.length === 0 && (
-                  <p className="text-slate-500">
-                    Nenhum atleta adicionado para salvar.
-                  </p>
-                )}
-              </div>
-
-              <h3 className="font-bold mb-3">Registros salvos</h3>
-
-              <div className="space-y-4">
-                {draws.map((draw) => (
-                  <div key={draw.id} className="border rounded-2xl p-5">
-                    <p className="text-slate-500 text-sm mb-3">
-                      Registro realizado em{' '}
-                      {new Date(draw.createdAt).toLocaleString('pt-BR')}
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {draw.players.map((player, index) => {
-                        const substitution = wasSubstituted(player);
-
-                        return (
-                          <div
-                            key={`${draw.id}-${index}`}
-                            className="bg-slate-50 rounded-xl p-3"
-                          >
-                            <strong>
-                              Nº {player.number} - {player.name}
-                            </strong>
-
-                            {player.nickname && (
-                              <p className="text-sm text-slate-500">
-                                Apelido: {player.nickname}
-                              </p>
-                            )}
-
-                            <p className="text-sm text-slate-500">
-                              {getTeamName(player.team)} -{' '}
-                              {player.type === 'EXAME'
-                                ? 'Principal exame'
-                                : 'Reserva'}
-                            </p>
-
-                            {substitution && (
-                              <p className="mt-2 text-sm text-orange-700 font-medium">
-                                Substituído: entrou Nº {substitution.playerInNumber}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Nome do atleta"
+                            value={drawForm.homeReserveName}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('homeReserveName', e.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))}
 
-                {draws.length === 0 && (
-                  <p className="text-slate-500">
-                    Nenhum registro salvo ainda.
+                  <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
+                    <div className="mb-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                        Visitante
+                      </p>
+
+                      <h3 className="text-xl font-black text-slate-900">
+                        {match.awayTeam}
+                      </h3>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="bg-white border border-red-100 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <h4 className="font-black text-red-700">
+                            Principal Exame
+                          </h4>
+
+                          <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                            Obrigatório
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Número"
+                            value={drawForm.awayExamNumber}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('awayExamNumber', e.target.value)
+                            }
+                          />
+
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Nome do atleta"
+                            value={drawForm.awayExamName}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('awayExamName', e.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-yellow-100 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <h4 className="font-black text-yellow-700">
+                            Reserva
+                          </h4>
+
+                          <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                            Opcional
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Número"
+                            value={drawForm.awayReserveNumber}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('awayReserveNumber', e.target.value)
+                            }
+                          />
+
+                          <input
+                            className="border rounded-xl p-3 disabled:bg-slate-100"
+                            placeholder="Nome do atleta"
+                            value={drawForm.awayReserveName}
+                            disabled={isControlDone}
+                            onChange={(e) =>
+                              updateDrawForm('awayReserveName', e.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-sm text-slate-500">
+                    Após salvar, o sorteio será exibido em Informações da partida e esta área ficará oculta.
                   </p>
-                )}
+
+                  <button
+                    disabled={isControlDone}
+                    onClick={saveDraw}
+                    className="bg-green-600 disabled:bg-slate-300 text-white px-5 py-3 rounded-2xl font-semibold"
+                  >
+                    Salvar sorteio
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+
+            {hasDrawDone && (
+              <div className="bg-green-50 border border-green-200 rounded-3xl p-5 lg:p-8">
+                <h2 className="text-2xl font-black text-green-800">
+                  Sorteio realizado
+                </h2>
+
+                <p className="text-green-700 mt-2">
+                  Os atletas sorteados estão disponíveis em Informações da partida.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
