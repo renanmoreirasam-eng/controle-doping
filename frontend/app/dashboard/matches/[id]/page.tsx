@@ -76,6 +76,26 @@ type RoomInspection = {
   photos: RoomInspectionPhoto[];
 };
 
+
+type OperationalStep =
+  | 'CHECKIN_STADIUM'
+  | 'MATCH_IN_PROGRESS'
+  | 'DRAW_DONE'
+  | 'CONTROL_DONE';
+
+type OperationalLog = {
+  id: string;
+  matchId: string;
+  step: OperationalStep;
+  userId?: string | null;
+  userName?: string | null;
+  userEmail?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  createdAt: string;
+};
+
+
 const defaultRoomItems: RoomInspectionItem[] = [
   { label: 'Mesa disponível', status: 'CONFORME' },
   { label: 'Cadeiras disponíveis', status: 'CONFORME' },
@@ -102,6 +122,7 @@ export default function MatchDetailsPage() {
   const [draws, setDraws] = useState<Draw[]>([]);
   const [substitutions, setSubstitutions] = useState<Substitution[]>([]);
   const [roomInspections, setRoomInspections] = useState<RoomInspection[]>([]);
+  const [operationalLogs, setOperationalLogs] = useState<OperationalLog[]>([]);
 
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
@@ -152,6 +173,7 @@ export default function MatchDetailsPage() {
       loadDraws();
       loadSubstitutions();
       loadRoomInspections();
+      loadOperationalLogs();
     }
   }, [matchId]);
 
@@ -217,6 +239,11 @@ export default function MatchDetailsPage() {
     setRoomInspections(response.data);
   }
 
+  async function loadOperationalLogs() {
+    const response = await api.get(`/matches/${matchId}/operational-logs`);
+    setOperationalLogs(response.data);
+  }
+
   function getStatusLabel(status: string) {
     if (status === 'SCHEDULED') return 'Agendado';
     if (status === 'SCALE_ACCEPTED') return 'Check-in realizado';
@@ -237,21 +264,136 @@ export default function MatchDetailsPage() {
     return 'bg-slate-100 text-slate-700';
   }
 
+  function getCurrentPosition(): Promise<{
+    latitude: number;
+    longitude: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocalização não disponível neste navegador.'));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        () => {
+          reject(
+            new Error(
+              'Não foi possível obter sua localização. Autorize o acesso à localização para fazer o check-in.',
+            ),
+          );
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        },
+      );
+    });
+  }
+
   async function updateMatchStatus(status: string) {
     try {
+      let location:
+        | {
+            latitude: number;
+            longitude: number;
+          }
+        | undefined;
+
+      if (status === 'SCALE_ACCEPTED') {
+        location = await getCurrentPosition();
+      }
+
       await api.patch(`/matches/${matchId}/status`, {
         status,
+        latitude: location?.latitude,
+        longitude: location?.longitude,
       });
 
       await loadMatch();
+      await loadOperationalLogs();
 
       alert('Status do jogo atualizado com sucesso!');
     } catch (error: any) {
       alert(
-        error.response?.data?.message ||
+        error.message ||
+          error.response?.data?.message ||
           'Erro ao atualizar status do jogo',
       );
     }
+  }
+
+  function getOperationalLog(step: OperationalStep) {
+    return operationalLogs.find((log) => log.step === step);
+  }
+
+  function getOperationalStepLabel(step: OperationalStep) {
+    if (step === 'CHECKIN_STADIUM') return 'Check-in no estádio';
+    if (step === 'MATCH_IN_PROGRESS') return 'Jogo em andamento';
+    if (step === 'DRAW_DONE') return 'Sorteio realizado';
+    if (step === 'CONTROL_DONE') return 'Controle realizado';
+
+    return step;
+  }
+
+  function getMapUrl(log: OperationalLog) {
+    if (log.latitude === null || log.latitude === undefined) return '';
+    if (log.longitude === null || log.longitude === undefined) return '';
+
+    return `https://www.google.com/maps?q=${log.latitude},${log.longitude}`;
+  }
+
+  function renderOperationalLog(step: OperationalStep) {
+    const log = getOperationalLog(step);
+
+    if (!log) {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 rounded-2xl bg-white/70 border border-slate-200 p-3 text-xs text-slate-600">
+        <p>
+          <strong>Registrado em:</strong>{' '}
+          {new Date(log.createdAt).toLocaleString('pt-BR')}
+        </p>
+
+        <p className="mt-1">
+          <strong>Usuário:</strong>{' '}
+          {log.userName || log.userEmail || 'Não identificado'}
+        </p>
+
+        {step === 'CHECKIN_STADIUM' &&
+          log.latitude !== null &&
+          log.latitude !== undefined &&
+          log.longitude !== null &&
+          log.longitude !== undefined && (
+            <div className="mt-2 space-y-1">
+              <p>
+                <strong>Latitude:</strong> {log.latitude}
+              </p>
+
+              <p>
+                <strong>Longitude:</strong> {log.longitude}
+              </p>
+
+              <a
+                href={getMapUrl(log)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex mt-2 bg-slate-950 text-white px-3 py-2 rounded-xl font-semibold"
+              >
+                Ver local no mapa
+              </a>
+            </div>
+          )}
+      </div>
+    );
   }
 
   function getRoomStatus() {
@@ -417,9 +559,14 @@ export default function MatchDetailsPage() {
         players: drawnPlayers,
       });
 
+      await api.post(`/matches/${matchId}/operational-logs`, {
+        step: 'DRAW_DONE',
+      });
+
       setDrawnPlayers([]);
 
       await loadDraws();
+      await loadOperationalLogs();
 
       alert('Registro salvo com sucesso!');
     } catch (error: any) {
@@ -1073,6 +1220,8 @@ function formatTimeOnly(date: string) {
                     )}
                   </div>
 
+                  {renderOperationalLog('CHECKIN_STADIUM')}
+
                   {canDoCheckIn && (
                     <button
                       onClick={() => updateMatchStatus('SCALE_ACCEPTED')}
@@ -1109,6 +1258,8 @@ function formatTimeOnly(date: string) {
                       </span>
                     )}
                   </div>
+
+                  {renderOperationalLog('MATCH_IN_PROGRESS')}
 
                   {canStartMatch && (
                     <button
@@ -1157,6 +1308,8 @@ function formatTimeOnly(date: string) {
                     )}
                   </div>
 
+                  {renderOperationalLog('DRAW_DONE')}
+
                   {!hasDrawDone && isMatchInProgress && !isControlDone && (
                     <p className="mt-4 text-xs text-purple-700">
                       Após salvar os atletas sorteados, esta etapa ficará como sorteio realizado.
@@ -1196,6 +1349,8 @@ function formatTimeOnly(date: string) {
                       </span>
                     )}
                   </div>
+
+                  {renderOperationalLog('CONTROL_DONE')}
 
                   {canFinishControl && (
                     <button

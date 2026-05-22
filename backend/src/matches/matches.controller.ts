@@ -71,12 +71,57 @@ export class MatchesController {
   @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: { status: MatchStatus },
+    @Body()
+    body: {
+      status: MatchStatus;
+      latitude?: number;
+      longitude?: number;
+    },
+    @Req() req: any,
   ) {
     return this.matchesService.updateStatus(
       id,
       body.status,
+      req.user,
+      {
+        latitude: body.latitude,
+        longitude: body.longitude,
+      },
     );
+  }
+
+
+  @Post(':id/operational-logs')
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async createOperationalLog(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      step:
+        | 'CHECKIN_STADIUM'
+        | 'MATCH_IN_PROGRESS'
+        | 'DRAW_DONE'
+        | 'CONTROL_DONE';
+      latitude?: number;
+      longitude?: number;
+    },
+    @Req() req: any,
+  ) {
+    return this.matchesService.createOperationalLog(
+      id,
+      body.step,
+      req.user,
+      {
+        latitude: body.latitude,
+        longitude: body.longitude,
+      },
+    );
+  }
+
+  @Get(':id/operational-logs')
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async findOperationalLogs(@Param('id') id: string) {
+    return this.matchesService.findOperationalLogs(id);
   }
 
   @Delete(':id')
