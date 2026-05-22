@@ -15,22 +15,16 @@ type ModalState = {
 export default function LoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] =
-    useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [password, setPassword] =
-    useState('');
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [modal, setModal] =
-    useState<ModalState>({
-      open: false,
-      title: '',
-      message: '',
-      variant: 'default',
-    });
+  const [modal, setModal] = useState<ModalState>({
+    open: false,
+    title: '',
+    message: '',
+    variant: 'default',
+  });
 
   function showModal(
     title: string,
@@ -74,13 +68,10 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
-      const response = await api.post(
-        '/auth/login',
-        {
-          email,
-          password,
-        },
-      );
+      const response = await api.post('/auth/login', {
+        email,
+        password,
+      });
 
       const token =
         response.data.accessToken ||
@@ -96,15 +87,8 @@ export default function LoginPage() {
         return;
       }
 
-      localStorage.setItem(
-        'token',
-        token,
-      );
-
-      localStorage.setItem(
-        'user',
-        JSON.stringify(response.data.user),
-      );
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
 
       router.push('/dashboard');
     } catch (error: any) {
@@ -124,8 +108,12 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-[32px] shadow-xl border border-slate-200 p-6 lg:p-8">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4">
-              🧪
+            <div className="flex justify-center mb-5">
+              <img
+                src="/CDB_logo_colorido_transparente.png"
+                alt="Controle de Doping Brasil"
+                className="h-36 w-auto object-contain"
+              />
             </div>
 
             <h1 className="text-3xl lg:text-4xl font-black">
@@ -148,9 +136,7 @@ export default function LoginPage() {
                 placeholder="Digite seu e-mail"
                 className="w-full border border-slate-200 rounded-2xl p-4 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-950"
                 value={email}
-                onChange={(e) =>
-                  setEmail(e.target.value)
-                }
+                onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     handleLogin();
@@ -169,9 +155,7 @@ export default function LoginPage() {
                 placeholder="Digite sua senha"
                 className="w-full border border-slate-200 rounded-2xl p-4 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-950"
                 value={password}
-                onChange={(e) =>
-                  setPassword(e.target.value)
-                }
+                onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     handleLogin();
@@ -185,9 +169,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-2xl p-4 font-bold transition"
             >
-              {loading
-                ? 'Entrando...'
-                : 'Entrar'}
+              {loading ? 'Entrando...' : 'Entrar'}
             </button>
           </div>
         </div>
