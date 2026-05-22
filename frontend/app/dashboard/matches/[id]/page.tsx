@@ -279,6 +279,9 @@ export default function MatchDetailsPage() {
     isMatchInProgress &&
     hasDrawDone;
 
+  const canShowOperationalSections =
+    isMatchInProgress || hasDrawDone || isControlDone;
+
   function formatTime() {
     const hrs = String(Math.floor(seconds / 3600)).padStart(2, '0');
     const mins = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
@@ -1145,6 +1148,8 @@ function formatTimeOnly(date: string) {
   </div>
               </div>
             </details>
+            {canShowOperationalSections && (
+              <>
             <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
@@ -1532,6 +1537,8 @@ function formatTimeOnly(date: string) {
                 </div>
               </details>
             )}
+              </>
+            )}
           </div>
 
           <div className="space-y-4 lg:space-y-6">
@@ -1740,6 +1747,7 @@ function formatTimeOnly(date: string) {
               </div>
               </div>
             </details>
+            {canShowOperationalSections && (
             <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
@@ -1788,6 +1796,7 @@ function formatTimeOnly(date: string) {
   </div>
               </div>
             </details>
+            )}
           </div>
         </section>
       </div>
