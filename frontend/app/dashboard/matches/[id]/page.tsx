@@ -848,44 +848,61 @@ function formatTimeOnly(date: string) {
       <Sidebar />
 
       <div className="flex-1">
-        <header className="bg-white border-b border-slate-200 px-8 py-6">
-  <div className="flex items-center justify-between">
-    <div>
-      <p className="text-sm text-slate-500 font-medium">
-        Operação da partida
-      </p>
+        <header className="bg-white border-b border-slate-200 px-4 py-5 lg:px-8 lg:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm text-slate-500 font-medium">
+                Operação da partida
+              </p>
 
-      <h1 className="text-4xl font-black mt-1">
-        {match.homeTeam} x {match.awayTeam}
-      </h1>
+              <h1 className="text-2xl lg:text-4xl font-black mt-1 leading-tight">
+                {match.homeTeam} x {match.awayTeam}
+              </h1>
 
-      <p className="text-slate-500 mt-2">
-        {match.championship.name}
-      </p>
-      {match.missionCode && (
-  <p className="text-slate-500 mt-1">
-    Código da missão: <strong>{match.missionCode}</strong>
-  </p>
-)}
-    </div>
+              <p className="text-slate-500 mt-2">
+                {match.championship.name}
+              </p>
 
-    <span
-      className={`${getStatusClass(
-        match.status,
-      )} px-5 py-3 rounded-2xl text-sm font-semibold`}
-    >
-      {getStatusLabel(match.status)}
-    </span>
-  </div>
-</header>
+              {match.missionCode && (
+                <p className="text-slate-500 mt-1">
+                  Código da missão: <strong>{match.missionCode}</strong>
+                </p>
+              )}
+            </div>
 
-        <section className="p-8 grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
-  <h2 className="text-2xl font-black mb-6">
-    Informações da partida
-  </h2>
+            <span
+              className={`${getStatusClass(
+                match.status,
+              )} w-fit px-4 lg:px-5 py-2 lg:py-3 rounded-2xl text-xs lg:text-sm font-semibold`}
+            >
+              {getStatusLabel(match.status)}
+            </span>
+          </div>
+        </header>
 
+        <section className="p-4 lg:p-8 grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+          <div className="xl:col-span-2 space-y-4 lg:space-y-6">
+            <details open className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <h2 className="text-xl lg:text-2xl font-black">
+                    Informações da partida
+                  </h2>
+
+                  <p className="text-sm text-slate-500 mt-1">
+                    Dados principais, local, status e atletas sorteados.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+
+                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    ⌄
+                  </span>
+                </div>
+              </summary>
+
+              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
   <div className="grid md:grid-cols-2 gap-4">
     <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
       <p className="text-slate-500 text-sm">
@@ -1027,8 +1044,8 @@ function formatTimeOnly(date: string) {
       </div>
     )}
   </div>
-</div>
-
+              </div>
+            </details>
             {isControlDone && (
               <div className="bg-green-100 text-green-800 border border-green-200 rounded-3xl p-6">
                 <h2 className="font-bold text-xl mb-1">
@@ -1040,24 +1057,30 @@ function formatTimeOnly(date: string) {
                 </p>
               </div>
             )}
+            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <h2 className="text-xl lg:text-2xl font-black">
+                    Oficiais escalados
+                  </h2>
 
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
-  <div className="flex items-center justify-between mb-6">
-    <div>
-      <h2 className="text-2xl font-black">
-        Oficiais escalados
-      </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Equipe responsável pela operação deste jogo.
+                  </p>
+                </div>
 
-      <p className="text-slate-500 mt-1">
-        Equipe responsável pela operação deste jogo.
-      </p>
-    </div>
+                <div className="flex items-center gap-3">
 
-    <span className="bg-slate-100 px-4 py-2 rounded-2xl text-sm font-semibold">
-      {scales.length} oficiais
-    </span>
-  </div>
+              <span className="bg-slate-100 px-3 py-1 rounded-2xl text-xs font-semibold text-slate-700">
+                {scales.length} oficiais
+              </span>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    ⌄
+                  </span>
+                </div>
+              </summary>
 
+              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     {scales.map((scale) => (
       <div
@@ -1120,8 +1143,29 @@ function formatTimeOnly(date: string) {
       </div>
     )}
   </div>
-</div>
+              </div>
+            </details>
+            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <h2 className="text-xl lg:text-2xl font-black">
+                    Inspeção da sala
+                  </h2>
 
+                  <p className="text-sm text-slate-500 mt-1">
+                    Checklist da sala de controle de doping.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+
+                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    ⌄
+                  </span>
+                </div>
+              </summary>
+
+              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
           <Link
   href={`/dashboard/matches/${matchId}/room-inspection`}
   className={`block text-center py-4 rounded-2xl font-semibold transition ${
@@ -1134,24 +1178,32 @@ function formatTimeOnly(date: string) {
     ? 'Visualizar checklist da sala'
     : 'Abrir inspeção da sala'}
 </Link>
-
-            <div className="bg-white rounded-3xl shadow p-5 lg:p-8">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-6">
+              </div>
+            </details>
+            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-2xl font-bold">Substituições</h2>
+                  <h2 className="text-xl lg:text-2xl font-black">
+                    Substituições
+                  </h2>
 
-                  <p className="text-slate-500 mt-1">
+                  <p className="text-sm text-slate-500 mt-1">
                     Informe até 5 substituições por equipe. Campos vazios serão ignorados.
                   </p>
                 </div>
 
-                {substitutions.length > 0 && (
-                  <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
-                    {substitutions.length} registrada(s)
-                  </span>
-                )}
-              </div>
+                <div className="flex items-center gap-3">
 
+              <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
+                {substitutions.length > 0 ? `${substitutions.length} registrada(s)` : 'Opcional'}
+              </span>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    ⌄
+                  </span>
+                </div>
+              </summary>
+
+              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 {(['HOME', 'AWAY'] as const).map((team) => (
                   <div
@@ -1243,231 +1295,267 @@ function formatTimeOnly(date: string) {
                   </p>
                 )}
               </div>
-            </div>
-
+              </div>
+            </details>
             {!hasDrawDone && (
-              <div className="bg-white rounded-3xl shadow p-5 lg:p-8">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-6">
+            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                   <div>
-                    <h2 className="text-2xl font-bold">
+                    <h2 className="text-xl lg:text-2xl font-black">
                       Registro dos atletas sorteados
                     </h2>
-
-                    <p className="text-slate-500 mt-1">
+  
+                    <p className="text-sm text-slate-500 mt-1">
                       Preencha os atletas principais de cada time. O reserva é opcional.
                     </p>
                   </div>
-
-                  <span className="bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
-                    Sorteio pendente
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                  <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
-                    <div className="mb-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
-                        Mandante
-                      </p>
-
-                      <h3 className="text-xl font-black text-slate-900">
-                        {match.homeTeam}
-                      </h3>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="bg-white border border-red-100 rounded-2xl p-4">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <h4 className="font-black text-red-700">
-                            Principal Exame
-                          </h4>
-
-                          <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[11px] font-bold">
-                            Obrigatório
-                          </span>
+  
+                  <div className="flex items-center gap-3">
+  
+                <span className="bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
+                  Sorteio pendente
+                </span>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                      ⌄
+                    </span>
+                  </div>
+                </summary>
+  
+                <div className="px-5 pb-5 lg:px-8 lg:pb-8">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
+                      <div className="mb-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                          Mandante
+                        </p>
+  
+                        <h3 className="text-xl font-black text-slate-900">
+                          {match.homeTeam}
+                        </h3>
+                      </div>
+  
+                      <div className="space-y-4">
+                        <div className="bg-white border border-red-100 rounded-2xl p-4">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <h4 className="font-black text-red-700">
+                              Principal Exame
+                            </h4>
+  
+                            <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                              Obrigatório
+                            </span>
+                          </div>
+  
+                          <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Número"
+                              value={drawForm.homeExamNumber}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('homeExamNumber', e.target.value)
+                              }
+                            />
+  
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Nome do atleta"
+                              value={drawForm.homeExamName}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('homeExamName', e.target.value)
+                              }
+                            />
+                          </div>
                         </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Número"
-                            value={drawForm.homeExamNumber}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('homeExamNumber', e.target.value)
-                            }
-                          />
-
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Nome do atleta"
-                            value={drawForm.homeExamName}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('homeExamName', e.target.value)
-                            }
-                          />
+  
+                        <div className="bg-white border border-yellow-100 rounded-2xl p-4">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <h4 className="font-black text-yellow-700">
+                              Reserva
+                            </h4>
+  
+                            <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                              Opcional
+                            </span>
+                          </div>
+  
+                          <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Número"
+                              value={drawForm.homeReserveNumber}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('homeReserveNumber', e.target.value)
+                              }
+                            />
+  
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Nome do atleta"
+                              value={drawForm.homeReserveName}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('homeReserveName', e.target.value)
+                              }
+                            />
+                          </div>
                         </div>
                       </div>
-
-                      <div className="bg-white border border-yellow-100 rounded-2xl p-4">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <h4 className="font-black text-yellow-700">
-                            Reserva
-                          </h4>
-
-                          <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-[11px] font-bold">
-                            Opcional
-                          </span>
+                    </div>
+  
+                    <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
+                      <div className="mb-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                          Visitante
+                        </p>
+  
+                        <h3 className="text-xl font-black text-slate-900">
+                          {match.awayTeam}
+                        </h3>
+                      </div>
+  
+                      <div className="space-y-4">
+                        <div className="bg-white border border-red-100 rounded-2xl p-4">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <h4 className="font-black text-red-700">
+                              Principal Exame
+                            </h4>
+  
+                            <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                              Obrigatório
+                            </span>
+                          </div>
+  
+                          <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Número"
+                              value={drawForm.awayExamNumber}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('awayExamNumber', e.target.value)
+                              }
+                            />
+  
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Nome do atleta"
+                              value={drawForm.awayExamName}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('awayExamName', e.target.value)
+                              }
+                            />
+                          </div>
                         </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Número"
-                            value={drawForm.homeReserveNumber}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('homeReserveNumber', e.target.value)
-                            }
-                          />
-
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Nome do atleta"
-                            value={drawForm.homeReserveName}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('homeReserveName', e.target.value)
-                            }
-                          />
+  
+                        <div className="bg-white border border-yellow-100 rounded-2xl p-4">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <h4 className="font-black text-yellow-700">
+                              Reserva
+                            </h4>
+  
+                            <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-[11px] font-bold">
+                              Opcional
+                            </span>
+                          </div>
+  
+                          <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Número"
+                              value={drawForm.awayReserveNumber}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('awayReserveNumber', e.target.value)
+                              }
+                            />
+  
+                            <input
+                              className="border rounded-xl p-3 disabled:bg-slate-100"
+                              placeholder="Nome do atleta"
+                              value={drawForm.awayReserveName}
+                              disabled={isControlDone}
+                              onChange={(e) =>
+                                updateDrawForm('awayReserveName', e.target.value)
+                              }
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-
-                  <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
-                    <div className="mb-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
-                        Visitante
-                      </p>
-
-                      <h3 className="text-xl font-black text-slate-900">
-                        {match.awayTeam}
-                      </h3>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="bg-white border border-red-100 rounded-2xl p-4">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <h4 className="font-black text-red-700">
-                            Principal Exame
-                          </h4>
-
-                          <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[11px] font-bold">
-                            Obrigatório
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Número"
-                            value={drawForm.awayExamNumber}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('awayExamNumber', e.target.value)
-                            }
-                          />
-
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Nome do atleta"
-                            value={drawForm.awayExamName}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('awayExamName', e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="bg-white border border-yellow-100 rounded-2xl p-4">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <h4 className="font-black text-yellow-700">
-                            Reserva
-                          </h4>
-
-                          <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-[11px] font-bold">
-                            Opcional
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Número"
-                            value={drawForm.awayReserveNumber}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('awayReserveNumber', e.target.value)
-                            }
-                          />
-
-                          <input
-                            className="border rounded-xl p-3 disabled:bg-slate-100"
-                            placeholder="Nome do atleta"
-                            value={drawForm.awayReserveName}
-                            disabled={isControlDone}
-                            onChange={(e) =>
-                              updateDrawForm('awayReserveName', e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
+  
+                  <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <p className="text-sm text-slate-500">
+                      Após salvar, o sorteio será exibido em Informações da partida e esta área ficará oculta.
+                    </p>
+  
+                    <button
+                      disabled={isControlDone}
+                      onClick={saveDraw}
+                      className="bg-green-600 disabled:bg-slate-300 text-white px-5 py-3 rounded-2xl font-semibold"
+                    >
+                      Salvar sorteio
+                    </button>
                   </div>
                 </div>
-
-                <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <p className="text-sm text-slate-500">
-                    Após salvar, o sorteio será exibido em Informações da partida e esta área ficará oculta.
-                  </p>
-
-                  <button
-                    disabled={isControlDone}
-                    onClick={saveDraw}
-                    className="bg-green-600 disabled:bg-slate-300 text-white px-5 py-3 rounded-2xl font-semibold"
-                  >
-                    Salvar sorteio
-                  </button>
-                </div>
-              </div>
+              </details>
             )}
-
             {hasDrawDone && (
-              <div className="bg-green-50 border border-green-200 rounded-3xl p-5 lg:p-8">
-                <h2 className="text-2xl font-black text-green-800">
-                  Sorteio realizado
-                </h2>
-
-                <p className="text-green-700 mt-2">
-                  Os atletas sorteados estão disponíveis em Informações da partida.
-                </p>
-              </div>
+            <details className="group bg-green-50 rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+                  <div>
+                    <h2 className="text-xl lg:text-2xl font-black">
+                      Sorteio realizado
+                    </h2>
+  
+                    <p className="text-sm text-slate-500 mt-1">
+                      Atletas disponíveis em Informações da partida.
+                    </p>
+                  </div>
+  
+                  <div className="flex items-center gap-3">
+  
+                    <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                      ⌄
+                    </span>
+                  </div>
+                </summary>
+  
+                <div className="px-5 pb-5 lg:px-8 lg:pb-8">
+                  <p className="text-green-700">
+                    Os atletas sorteados estão disponíveis em Informações da partida.
+                  </p>
+                </div>
+              </details>
             )}
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-8">
-              <h2 className="text-2xl font-black mb-2">
-                Status operacional
-              </h2>
+          <div className="space-y-4 lg:space-y-6">
+            <details open className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <h2 className="text-xl lg:text-2xl font-black">
+                    Status operacional
+                  </h2>
 
-              <p className="text-slate-500 mb-6">
-                Avance a operação seguindo a sequência obrigatória.
-              </p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Avance a operação seguindo a sequência obrigatória.
+                  </p>
+                </div>
 
+                <div className="flex items-center gap-3">
+
+                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    ⌄
+                  </span>
+                </div>
+              </summary>
+
+              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
               <div className="space-y-3">
                 <div
                   className={`rounded-2xl border p-4 ${
@@ -1650,13 +1738,29 @@ function formatTimeOnly(date: string) {
                   </div>
                 )}
               </div>
-            </div>
+              </div>
+            </details>
+            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <h2 className="text-xl lg:text-2xl font-black">
+                    Cronômetro
+                  </h2>
 
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center">
-  <h2 className="text-2xl font-black mb-2">
-    Cronômetro
-  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Apoio operacional durante a partida.
+                  </p>
+                </div>
 
+                <div className="flex items-center gap-3">
+
+                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    ⌄
+                  </span>
+                </div>
+              </summary>
+
+              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
   <p className="text-slate-500 mb-6">
     Apoio operacional durante a partida.
   </p>
@@ -1682,7 +1786,8 @@ function formatTimeOnly(date: string) {
       Parar
     </button>
   </div>
-</div>
+              </div>
+            </details>
           </div>
         </section>
       </div>
