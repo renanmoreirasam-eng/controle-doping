@@ -66,6 +66,12 @@ type Substitution = {
   createdAt: string;
 };
 
+type SubstitutionFormRow = {
+  playerOutNumber: string;
+  playerInNumber: string;
+};
+
+
 type RoomInspectionItem = {
   label: string;
   status: string;
@@ -106,6 +112,13 @@ type OperationalLog = {
   createdAt: string;
 };
 
+
+function createEmptySubstitutionRows(): SubstitutionFormRow[] {
+  return Array.from({ length: 5 }, () => ({
+    playerOutNumber: '',
+    playerInNumber: '',
+  }));
+}
 
 const defaultRoomItems: RoomInspectionItem[] = [
   { label: 'Mesa disponível', status: 'CONFORME' },
@@ -155,12 +168,13 @@ export default function MatchDetailsPage() {
     awayReserveName: '',
   });
 
-  const [subTeam, setSubTeam] = useState<'HOME' | 'AWAY'>('HOME');
-  const [playerOutNumber, setPlayerOutNumber] = useState('');
-  const [playerInNumber, setPlayerInNumber] = useState('');
-  const [subMinute, setSubMinute] = useState('');
-  const [subPeriod, setSubPeriod] = useState('SECOND_HALF');
-  const [subNotes, setSubNotes] = useState('');
+  const [substitutionForm, setSubstitutionForm] = useState<{
+    HOME: SubstitutionFormRow[];
+    AWAY: SubstitutionFormRow[];
+  }>({
+    HOME: createEmptySubstitutionRows(),
+    AWAY: createEmptySubstitutionRows(),
+  });
 
   const [roomItems, setRoomItems] = useState<RoomInspectionItem[]>(defaultRoomItems);
   const [roomNotes, setRoomNotes] = useState('');
@@ -197,6 +211,33 @@ export default function MatchDetailsPage() {
       loadOperationalLogs();
     }
   }, [matchId]);
+
+  useEffect(() => {
+    const nextForm = {
+      HOME: createEmptySubstitutionRows(),
+      AWAY: createEmptySubstitutionRows(),
+    };
+
+    const orderedSubstitutions = [...substitutions].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() -
+        new Date(b.createdAt).getTime(),
+    );
+
+    for (const team of ['HOME', 'AWAY'] as const) {
+      orderedSubstitutions
+        .filter((sub) => sub.team === team)
+        .slice(0, 5)
+        .forEach((sub, index) => {
+          nextForm[team][index] = {
+            playerOutNumber: sub.playerOutNumber,
+            playerInNumber: sub.playerInNumber,
+          };
+        });
+    }
+
+    setSubstitutionForm(nextForm);
+  }, [substitutions]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -255,6 +296,28 @@ export default function MatchDetailsPage() {
     return substitutions.find(
       (sub) => sub.team === player.team && sub.playerOutNumber === player.number,
     );
+  }
+
+  function updateSubstitutionForm(
+    team: 'HOME' | 'AWAY',
+    index: number,
+    field: keyof SubstitutionFormRow,
+    value: string,
+  ) {
+    if (isControlDone) return;
+
+    setSubstitutionForm((prev) => {
+      const rows = [...prev[team]];
+      rows[index] = {
+        ...rows[index],
+        [field]: value,
+      };
+
+      return {
+        ...prev,
+        [team]: rows,
+      };
+    });
   }
 
   function updateDrawForm(field: keyof DrawForm, value: string) {
@@ -687,40 +750,60 @@ export default function MatchDetailsPage() {
     }
   }
 
-  async function createSubstitution() {
+  async function saveSubstitutions() {
     if (isControlDone) {
       alert('Controle já realizado. Não é possível alterar informações.');
       return;
     }
 
-    if (!playerOutNumber || !playerInNumber) {
-      alert('Informe o número do atleta que saiu e do atleta que entrou');
+    const rowsToSave = (['HOME', 'AWAY'] as const).flatMap((team) =>
+      substitutionForm[team]
+        .map((row, index) => ({
+          team,
+          index,
+          playerOutNumber: row.playerOutNumber.trim(),
+          playerInNumber: row.playerInNumber.trim(),
+        }))
+        .filter((row) => row.playerOutNumber || row.playerInNumber),
+    );
+
+    const incompleteRow = rowsToSave.find(
+      (row) => !row.playerOutNumber || !row.playerInNumber,
+    );
+
+    if (incompleteRow) {
+      alert(
+        `Preencha Nº saiu e Nº entrou na substituição ${incompleteRow.index + 1} de ${getTeamName(
+          incompleteRow.team,
+        )}.`,
+      );
       return;
     }
 
     try {
-      await api.post('/substitutions', {
-        matchId,
-        team: subTeam,
-        playerOutName: `Atleta ${playerOutNumber}`,
-        playerOutNumber,
-        playerInName: `Atleta ${playerInNumber}`,
-        playerInNumber,
-        minute: subMinute ? Number(subMinute) : Math.floor(seconds / 60),
-        period: subPeriod,
-        notes: subNotes || null,
-      });
+      for (const substitution of substitutions) {
+        await api.delete(`/substitutions/${substitution.id}`);
+      }
 
-      setPlayerOutNumber('');
-      setPlayerInNumber('');
-      setSubMinute('');
-      setSubNotes('');
+      for (const row of rowsToSave) {
+        await api.post('/substitutions', {
+          matchId,
+          team: row.team,
+          playerOutName: `Atleta ${row.playerOutNumber}`,
+          playerOutNumber: row.playerOutNumber,
+          playerInName: `Atleta ${row.playerInNumber}`,
+          playerInNumber: row.playerInNumber,
+          minute: null,
+          period: null,
+          notes: null,
+        });
+      }
 
       await loadSubstitutions();
 
-      alert('Substituição registrada com sucesso!');
+      alert('Substituições salvas com sucesso!');
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao registrar substituição');
+      alert(error.response?.data?.message || 'Erro ao salvar substituições');
     }
   }
 
@@ -1052,114 +1135,111 @@ function formatTimeOnly(date: string) {
     : 'Abrir inspeção da sala'}
 </Link>
 
-            <div className="bg-white rounded-3xl shadow p-8">
-              <h2 className="text-2xl font-bold mb-6">Substituições</h2>
+            <div className="bg-white rounded-3xl shadow p-5 lg:p-8">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold">Substituições</h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-                <select
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  value={subTeam}
-                  disabled={isControlDone}
-                  onChange={(e) => setSubTeam(e.target.value as 'HOME' | 'AWAY')}
-                >
-                  <option value="HOME">{match.homeTeam}</option>
-                  <option value="AWAY">{match.awayTeam}</option>
-                </select>
+                  <p className="text-slate-500 mt-1">
+                    Informe até 5 substituições por equipe. Campos vazios serão ignorados.
+                  </p>
+                </div>
 
-                <input
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  placeholder="Minuto"
-                  value={subMinute}
-                  disabled={isControlDone}
-                  onChange={(e) => setSubMinute(e.target.value)}
-                />
-
-                <select
-                  className="border rounded-xl p-3 md:col-span-2 disabled:bg-slate-100"
-                  value={subPeriod}
-                  disabled={isControlDone}
-                  onChange={(e) => setSubPeriod(e.target.value)}
-                >
-                  <option value="FIRST_HALF">1º tempo</option>
-                  <option value="SECOND_HALF">2º tempo</option>
-                  <option value="EXTRA_TIME">Acréscimos/prorrogação</option>
-                </select>
+                {substitutions.length > 0 && (
+                  <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
+                    {substitutions.length} registrada(s)
+                  </span>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                <input
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  placeholder="Nº saiu"
-                  value={playerOutNumber}
-                  disabled={isControlDone}
-                  onChange={(e) => setPlayerOutNumber(e.target.value)}
-                />
-
-                <input
-                  className="border rounded-xl p-3 disabled:bg-slate-100"
-                  placeholder="Nº entrou"
-                  value={playerInNumber}
-                  disabled={isControlDone}
-                  onChange={(e) => setPlayerInNumber(e.target.value)}
-                />
-              </div>
-
-              <textarea
-                className="border rounded-xl p-3 w-full mb-4 disabled:bg-slate-100"
-                placeholder="Observações da substituição"
-                value={subNotes}
-                disabled={isControlDone}
-                onChange={(e) => setSubNotes(e.target.value)}
-              />
-
-              <button
-                disabled={isControlDone}
-                onClick={createSubstitution}
-                className="bg-slate-950 disabled:bg-slate-300 text-white px-5 py-3 rounded-xl mb-6"
-              >
-                Registrar substituição
-              </button>
-
-              <div className="space-y-3">
-                {substitutions.map((sub) => (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                {(['HOME', 'AWAY'] as const).map((team) => (
                   <div
-                    key={sub.id}
-                    className="border rounded-2xl p-4 flex items-center justify-between"
+                    key={team}
+                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50"
                   >
-                    <div>
-                      <strong>
-                        {getTeamName(sub.team)} -{' '}
-                        {sub.minute ? `${sub.minute}'` : 'minuto não informado'}
-                      </strong>
-
-                      <p className="text-slate-600 text-sm">
-                        Saiu: Nº {sub.playerOutNumber}
+                    <div className="mb-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
+                        {team === 'HOME' ? 'Equipe Mandante' : 'Equipe Visitante'}
                       </p>
 
-                      <p className="text-slate-600 text-sm">
-                        Entrou: Nº {sub.playerInNumber}
-                      </p>
-
-                      {sub.notes && (
-                        <p className="text-slate-500 text-sm mt-1">
-                          Obs.: {sub.notes}
-                        </p>
-                      )}
+                      <h3 className="text-xl font-black text-slate-900">
+                        {getTeamName(team)}
+                      </h3>
                     </div>
 
-                    <button
-                      disabled={isControlDone}
-                      onClick={() => deleteSubstitution(sub.id)}
-                      className="bg-red-600 disabled:bg-slate-300 text-white px-3 py-2 rounded-xl text-sm"
-                    >
-                      Excluir
-                    </button>
+                    <div className="space-y-3">
+                      {substitutionForm[team].map((row, index) => (
+                        <div
+                          key={`${team}-${index}`}
+                          className="bg-white border border-slate-200 rounded-2xl p-3"
+                        >
+                          <p className="text-xs font-bold text-slate-400 mb-2">
+                            Substituição {index + 1}
+                          </p>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-500 mb-1">
+                                Nº saiu
+                              </label>
+
+                              <input
+                                className="w-full border border-slate-200 rounded-xl p-3 disabled:bg-slate-100"
+                                placeholder="Ex: 10"
+                                value={row.playerOutNumber}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateSubstitutionForm(
+                                    team,
+                                    index,
+                                    'playerOutNumber',
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-500 mb-1">
+                                Nº entrou
+                              </label>
+
+                              <input
+                                className="w-full border border-slate-200 rounded-xl p-3 disabled:bg-slate-100"
+                                placeholder="Ex: 18"
+                                value={row.playerInNumber}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateSubstitutionForm(
+                                    team,
+                                    index,
+                                    'playerInNumber',
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
+              </div>
 
-                {substitutions.length === 0 && (
-                  <p className="text-slate-500">
-                    Nenhuma substituição registrada.
+              <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                <button
+                  disabled={isControlDone}
+                  onClick={saveSubstitutions}
+                  className="bg-slate-950 disabled:bg-slate-300 text-white px-5 py-3 rounded-2xl font-semibold"
+                >
+                  Salvar substituições
+                </button>
+
+                {isControlDone && (
+                  <p className="text-sm text-slate-500 flex items-center">
+                    Controle realizado. As substituições estão bloqueadas.
                   </p>
                 )}
               </div>
