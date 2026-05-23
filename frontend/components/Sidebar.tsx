@@ -113,9 +113,8 @@ export function Sidebar() {
                 group flex items-center gap-3 px-4 py-3 rounded-2xl transition-all
                 ${
                   active
-                    ? 'bg-[var(--cdb-yellow)] text-slate-950 shadow-xl shadow-blue-950/20'
-                    : 'text-blue-50 hover:bg-white/12 hover:text-white'
-                }
+  ? 'bg-white text-[var(--cdb-blue)] shadow-xl shadow-blue-950/20'
+  : 'text-blue-50 hover:bg-white/12 hover:text-white'                }
               `}
             >
               <span
