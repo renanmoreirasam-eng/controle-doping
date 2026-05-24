@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { subscribeUserToPush } from "@/lib/pushNotifications";
 
 type NotificationStatus = "unsupported" | "default" | "granted" | "denied";
 
 export default function EnableNotificationsButton() {
   const [status, setStatus] = useState<NotificationStatus>("default");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!("Notification" in window)) {
@@ -25,19 +27,50 @@ export default function EnableNotificationsButton() {
 
     try {
       setLoading(true);
+      setMessage("");
 
       const permission = await Notification.requestPermission();
-
       setStatus(permission as NotificationStatus);
 
-      if (permission === "granted") {
-        new Notification("Notificações ativadas", {
-          body: "Você receberá avisos quando houver escala pendente.",
-          icon: "/icon-192.png",
-        });
+      if (permission !== "granted") {
+        setMessage("Permissão de notificação não foi concedida.");
+        return;
       }
+
+      const subscription = await subscribeUserToPush();
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      const token =
+        localStorage.getItem("token") ||
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("authToken");
+
+      const response = await fetch(`${apiUrl}/push/subscribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          subscription,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro ao salvar inscrição push.");
+      }
+
+      setMessage("Notificações ativadas com sucesso.");
+
+      new Notification("Notificações ativadas", {
+        body: "Você receberá avisos quando houver escala pendente.",
+        icon: "/icon-192.png",
+      });
     } catch (error) {
-      console.error("Erro ao solicitar permissão de notificação:", error);
+      console.error("Erro ao ativar notificações:", error);
+      setMessage("Não foi possível ativar as notificações.");
     } finally {
       setLoading(false);
     }
@@ -47,14 +80,6 @@ export default function EnableNotificationsButton() {
     return (
       <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 text-sm text-yellow-800">
         Este navegador não suporta notificações push.
-      </div>
-    );
-  }
-
-  if (status === "granted") {
-    return (
-      <div className="rounded-lg border border-green-300 bg-green-50 p-4 text-sm text-green-800">
-        Notificações ativadas. Você receberá avisos de escalas pendentes.
       </div>
     );
   }
@@ -69,13 +94,21 @@ export default function EnableNotificationsButton() {
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleEnableNotifications}
-      disabled={loading}
-      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {loading ? "Ativando..." : "Ativar notificações"}
-    </button>
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={handleEnableNotifications}
+        disabled={loading}
+        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading
+          ? "Ativando..."
+          : status === "granted"
+            ? "Salvar aparelho para notificações"
+            : "Ativar notificações"}
+      </button>
+
+      {message && <p className="text-sm text-slate-600">{message}</p>}
+    </div>
   );
 }
