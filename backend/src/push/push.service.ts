@@ -10,20 +10,35 @@ type PushSubscriptionPayload = {
   };
 };
 
+type PushNotificationPayload = {
+  title: string;
+  body: string;
+  url?: string;
+};
+
 @Injectable()
 export class PushService {
   constructor(private readonly prisma: PrismaService) {
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
-    const subject = process.env.VAPID_SUBJECT || 'mailto:admin@sampsolucoes.com.br';
+    const subject =
+      process.env.VAPID_SUBJECT || 'mailto:admin@sampsolucoes.com.br';
 
     if (publicKey && privateKey) {
       webpush.setVapidDetails(subject, publicKey, privateKey);
     }
   }
 
-  async subscribe(userId: string, subscription: PushSubscriptionPayload, userAgent?: string) {
-    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+  async subscribe(
+    userId: string,
+    subscription: PushSubscriptionPayload,
+    userAgent?: string,
+  ) {
+    if (
+      !subscription?.endpoint ||
+      !subscription?.keys?.p256dh ||
+      !subscription?.keys?.auth
+    ) {
       throw new BadRequestException('Inscrição push inválida.');
     }
 
@@ -47,15 +62,15 @@ export class PushService {
     });
   }
 
-  async sendTest(userId: string) {
+  async sendToUser(userId: string, notification: PushNotificationPayload) {
     const subscriptions = await this.prisma.pushSubscription.findMany({
       where: { userId },
     });
 
     const payload = JSON.stringify({
-      title: 'Controle de Doping',
-      body: 'Notificação de teste enviada com sucesso.',
-      url: '/dashboard',
+      title: notification.title,
+      body: notification.body,
+      url: notification.url || '/dashboard',
     });
 
     const results = await Promise.allSettled(
@@ -78,5 +93,13 @@ export class PushService {
       sent: results.filter((result) => result.status === 'fulfilled').length,
       failed: results.filter((result) => result.status === 'rejected').length,
     };
+  }
+
+  async sendTest(userId: string) {
+    return this.sendToUser(userId, {
+      title: 'Controle de Doping',
+      body: 'Notificação de teste enviada com sucesso.',
+      url: '/dashboard',
+    });
   }
 }

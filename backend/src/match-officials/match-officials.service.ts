@@ -4,10 +4,14 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 
 @Injectable()
 export class MatchOfficialsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pushService: PushService,
+  ) {}
 
   private includeRelations = {
     match: {
@@ -94,10 +98,35 @@ export class MatchOfficialsService {
       );
     }
 
-    return this.prisma.matchOfficial.create({
+    const created = await this.prisma.matchOfficial.create({
       data,
       include: this.includeRelations,
     });
+
+    const userId = created.official?.user?.id;
+
+    if (userId) {
+      const homeTeam = created.match.homeTeam;
+      const awayTeam = created.match.awayTeam;
+      const matchDate = created.match.matchDate
+        ? new Date(created.match.matchDate).toLocaleDateString('pt-BR')
+        : '';
+
+      this.pushService
+        .sendToUser(userId, {
+          title: 'Nova escala pendente',
+          body: `Você foi escalado para ${homeTeam} x ${awayTeam}${matchDate ? ` em ${matchDate}` : ''}. Toque para visualizar.`,
+          url: `/dashboard/matches/${created.matchId}`,
+        })
+        .catch((error) => {
+          console.error(
+            'Erro ao enviar push de nova escala:',
+            error,
+          );
+        });
+    }
+
+    return created;
   }
 
   async confirm(id: string) {
