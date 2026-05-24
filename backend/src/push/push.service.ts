@@ -63,19 +63,20 @@ export class PushService {
   }
 
   async sendToUser(userId: string, notification: PushNotificationPayload) {
-    const subscriptions = await this.prisma.pushSubscription.findMany({
-      where: { userId },
-    });
+  const subscriptions = await this.prisma.pushSubscription.findMany({
+    where: { userId },
+  });
 
-    const payload = JSON.stringify({
-      title: notification.title,
-      body: notification.body,
-      url: notification.url || '/dashboard',
-    });
+  const payload = JSON.stringify({
+    title: notification.title,
+    body: notification.body,
+    url: notification.url || '/dashboard',
+  });
 
-    const results = await Promise.allSettled(
-      subscriptions.map((item) =>
-        webpush.sendNotification(
+  const results = await Promise.allSettled(
+    subscriptions.map(async (item) => {
+      try {
+        await webpush.sendNotification(
           {
             endpoint: item.endpoint,
             keys: {
@@ -84,16 +85,51 @@ export class PushService {
             },
           },
           payload,
-        ),
-      ),
-    );
+        );
 
-    return {
-      total: subscriptions.length,
-      sent: results.filter((result) => result.status === 'fulfilled').length,
-      failed: results.filter((result) => result.status === 'rejected').length,
-    };
-  }
+        return {
+          id: item.id,
+          status: 'sent',
+        };
+      } catch (error: any) {
+        const statusCode = error?.statusCode;
+
+        if (statusCode === 404 || statusCode === 410) {
+          await this.prisma.pushSubscription.delete({
+            where: {
+              id: item.id,
+            },
+          });
+        }
+
+        return {
+          id: item.id,
+          status: 'failed',
+          statusCode,
+        };
+      }
+    }),
+  );
+
+  const sent = results.filter(
+    (result) =>
+      result.status === 'fulfilled' &&
+      result.value.status === 'sent',
+  ).length;
+
+  const failed = results.filter(
+    (result) =>
+      result.status === 'rejected' ||
+      (result.status === 'fulfilled' &&
+        result.value.status === 'failed'),
+  ).length;
+
+  return {
+    total: subscriptions.length,
+    sent,
+    failed,
+  };
+}
 
   async sendTest(userId: string) {
     return this.sendToUser(userId, {
