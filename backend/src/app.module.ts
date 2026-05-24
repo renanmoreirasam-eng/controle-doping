@@ -11,6 +11,7 @@ import { DrawsModule } from './draws/draws.module';
 import { SubstitutionsModule } from './substitutions/substitutions.module';
 import { TeamsModule } from './teams/teams.module';
 import { RoomInspectionsModule } from './room-inspections/room-inspections.module';
+import { PushModule } from './push/push.module';
 
 
 @Module({
@@ -27,6 +28,7 @@ import { RoomInspectionsModule } from './room-inspections/room-inspections.modul
     SubstitutionsModule,
     TeamsModule,
     RoomInspectionsModule,
+    PushModule,
   ],
 })
 export class AppModule {}
