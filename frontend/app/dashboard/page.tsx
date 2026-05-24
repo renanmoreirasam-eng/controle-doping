@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import EnableNotificationsButton from "@/components/EnableNotificationsButton";
 
 import { api } from '../../services/api';
 import { getUser } from '../../services/auth';
@@ -501,6 +502,21 @@ export default function Dashboard() {
                   </Link>
                 </div>
               </div>
+
+              <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Notificações
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  Ative para receber avisos quando houver escala pendente.
+                </p>
+
+                <div className="mt-4">
+                  <EnableNotificationsButton />
+                </div>
+              </div>
+
             </div>
           </div>
         </section>
