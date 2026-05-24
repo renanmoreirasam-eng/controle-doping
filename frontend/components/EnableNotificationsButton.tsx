@@ -37,20 +37,30 @@ export default function EnableNotificationsButton() {
         return;
       }
 
-      const subscription = await subscribeUserToPush();
-
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      if (!apiUrl) {
+        throw new Error("NEXT_PUBLIC_API_URL não configurada.");
+      }
 
       const token =
         localStorage.getItem("token") ||
         localStorage.getItem("access_token") ||
         localStorage.getItem("authToken");
 
+      if (!token) {
+        throw new Error(
+          "Token de login não encontrado. Faça logout e login novamente.",
+        );
+      }
+
+      const subscription = await subscribeUserToPush();
+
       const response = await fetch(`${apiUrl}/push/subscribe`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -59,7 +69,11 @@ export default function EnableNotificationsButton() {
       });
 
       if (!response.ok) {
-        throw new Error("Erro ao salvar inscrição push.");
+        const responseText = await response.text();
+
+        throw new Error(
+          `Erro ao salvar inscrição push. Status: ${response.status}. Resposta: ${responseText}`,
+        );
       }
 
       setMessage("Notificações ativadas com sucesso.");
@@ -70,6 +84,12 @@ export default function EnableNotificationsButton() {
       });
     } catch (error) {
       console.error("Erro ao ativar notificações:", error);
+
+      if (error instanceof Error) {
+        setMessage(error.message);
+        return;
+      }
+
       setMessage("Não foi possível ativar as notificações.");
     } finally {
       setLoading(false);
