@@ -78,10 +78,23 @@ export default function EnableNotificationsButton() {
 
       setMessage("Notificações ativadas com sucesso.");
 
-      new Notification("Notificações ativadas", {
-        body: "Você receberá avisos quando houver escala pendente.",
-        icon: "/icon-192.png",
-      });
+      try {
+        const registration = await navigator.serviceWorker.ready;
+
+        await registration.showNotification("Notificações ativadas", {
+          body: "Você receberá avisos quando houver escala pendente.",
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          data: {
+            url: "/dashboard",
+          },
+        });
+      } catch (notificationError) {
+        console.warn(
+          "A inscrição foi salva, mas a notificação local não foi exibida:",
+          notificationError,
+        );
+      }
     } catch (error) {
       console.error("Erro ao ativar notificações:", error);
 
