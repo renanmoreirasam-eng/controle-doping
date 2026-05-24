@@ -1,70 +1,66 @@
-const CACHE_NAME = "controle-doping-v2";
+/* sw.js - Service Worker com correção para notificações PWA
+   Correção aplicada:
+   - NÃO usar new Notification(...) dentro do Service Worker
+   - Usar self.registration.showNotification(...)
+*/
 
-const STATIC_ASSETS = [
-  "/offline",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/apple-icon.png",
-];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      await Promise.all(
-        STATIC_ASSETS.map(async (asset) => {
-          try {
-            await cache.add(asset);
-            console.log("Arquivo cacheado:", asset);
-          } catch (error) {
-            console.warn("Não foi possível cachear:", asset, error);
-          }
-        })
-      );
-    })
-  );
-
+self.addEventListener("install", function (event) {
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((cacheName) => cacheName !== CACHE_NAME)
-          .map((cacheName) => caches.delete(cacheName))
-      );
-    })
-  );
-
-  self.clients.claim();
+self.addEventListener("activate", function (event) {
+  event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-  const url = new URL(request.url);
+self.addEventListener("push", function (event) {
+  let data = {};
 
-  if (request.method !== "GET") {
-    return;
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (error) {
+    data = {
+      title: "Nova notificação",
+      body: event.data ? event.data.text() : "Você recebeu uma nova mensagem.",
+    };
   }
 
-  if (
-    url.pathname.startsWith("/api") ||
-    url.pathname.startsWith("/dashboard") ||
-    url.pathname.includes("auth")
-  ) {
-    return;
-  }
+  const title = data.title || data.notification?.title || "Nova notificação";
 
-  event.respondWith(
-    fetch(request).catch(async () => {
-      if (request.mode === "navigate") {
-        const offlinePage = await caches.match("/offline");
-        return offlinePage || Response.error();
+  const options = {
+    body: data.body || data.notification?.body || "Você recebeu uma nova mensagem.",
+    icon: data.icon || "/icons/icon-192.png",
+    badge: data.badge || "/icons/icon-192.png",
+    image: data.image,
+    data: {
+      url: data.url || data.click_action || data.notification?.click_action || "/",
+      ...data,
+    },
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    self.clients.matchAll({
+      type: "window",
+      includeUncontrolled: true,
+    }).then(function (clientList) {
+      for (const client of clientList) {
+        if (client.url.includes(urlToOpen) && "focus" in client) {
+          return client.focus();
+        }
       }
 
-      const cachedResponse = await caches.match(request);
-      return cachedResponse || Response.error();
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
     })
   );
 });
