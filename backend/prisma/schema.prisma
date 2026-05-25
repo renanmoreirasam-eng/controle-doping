@@ -13,59 +13,64 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  email       String   @unique
-  password    String
-  role        UserRole @default(OFFICIAL)
+  id       String   @id @default(cuid())
+  name     String
+  email    String   @unique
+  password String
+  role     UserRole @default(OFFICIAL)
 
-  official    Official?
+  official Official?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   pushSubscriptions PushSubscription[]
 }
 
 model Official {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id])
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
 
-  phone           String?
-  pixKey          String?
+  phone  String?
+  pixKey String?
 
-  active          Boolean  @default(true)
+  kits             Kit[]
+  kitMovementsFrom KitMovement[] @relation("KitMovementFromOfficial")
+  kitMovementsTo   KitMovement[] @relation("KitMovementToOfficial")
+  matchKits        MatchKit[]
 
-  scales          MatchOfficial[]
+  active Boolean @default(true)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  scales MatchOfficial[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Championship {
-  id            String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  name          String
+  name String
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  matches       Match[]
+  matches Match[]
 }
 
 model Stadium {
-  id            String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  name          String
-  city          String
-  state         String
-  address       String?
-  cep           String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  name      String
+  city      String
+  state     String
+  address   String?
+  cep       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  matches       Match[]
+  matches Match[]
 }
 
 model Team {
@@ -83,47 +88,127 @@ model Team {
 }
 
 model Match {
-  id                    String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  championshipId        String
-  championship          Championship @relation(fields: [championshipId], references: [id])
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id])
 
-  stadiumId             String
-  stadium               Stadium @relation(fields: [stadiumId], references: [id])
+  stadiumId String
+  stadium   Stadium @relation(fields: [stadiumId], references: [id])
 
-  homeTeam              String
-  awayTeam              String
+  homeTeam    String
+  awayTeam    String
   missionCode String?
-  
-  matchDate             DateTime
 
-  status                MatchStatus @default(SCHEDULED)
+  matchDate DateTime
 
-  officials             MatchOfficial[]
+  status MatchStatus @default(SCHEDULED)
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  officials MatchOfficial[]
 
-  draws                 Draw[]
-  substitutions         Substitution[]
-  roomInspections       RoomInspection[]
-  operationalLogs       MatchOperationalLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  draws           Draw[]
+  substitutions   Substitution[]
+  roomInspections RoomInspection[]
+  operationalLogs MatchOperationalLog[]
+
+  kits         MatchKit[]
+  kitMovements KitMovement[]
+}
+
+enum KitStatus {
+  DISPONIVEL
+  COM_DCO
+  VINCULADO_JOGO
+  UTILIZADO
+  CANCELADO
+}
+
+enum KitMovementType {
+  ENTRADA_ESTOQUE
+  REPASSE_DCO
+  VINCULO_JOGO
+  UTILIZADO
+  CANCELADO
+  DEVOLUCAO_ESTOQUE
+}
+
+model Kit {
+  id String @id @default(cuid())
+
+  number String    @unique
+  status KitStatus @default(DISPONIVEL)
+
+  currentOfficialId String?
+  currentOfficial   Official? @relation(fields: [currentOfficialId], references: [id])
+
+  matchKits MatchKit[]
+  movements KitMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MatchKit {
+  id String @id @default(cuid())
+
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  kitId String
+  kit   Kit    @relation(fields: [kitId], references: [id])
+
+  officialId String
+  official   Official @relation(fields: [officialId], references: [id])
+
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+
+  @@unique([matchId, kitId])
+}
+
+model KitMovement {
+  id String @id @default(cuid())
+
+  kitId String
+  kit   Kit    @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  type KitMovementType
+
+  fromOfficialId String?
+  fromOfficial   Official? @relation("KitMovementFromOfficial", fields: [fromOfficialId], references: [id])
+
+  toOfficialId String?
+  toOfficial   Official? @relation("KitMovementToOfficial", fields: [toOfficialId], references: [id])
+
+  matchId String?
+  match   Match?  @relation(fields: [matchId], references: [id])
+
+  userId    String?
+  userName  String?
+  userEmail String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
 }
 
 model MatchOfficial {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  matchId         String
-  match           Match    @relation(fields: [matchId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
 
-  officialId      String
-  official        Official @relation(fields: [officialId], references: [id])
+  officialId String
+  official   Official @relation(fields: [officialId], references: [id])
 
-  role            OfficialRole
+  role OfficialRole
 
-  confirmed       Boolean?
+  confirmed Boolean?
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 enum UserRole {
@@ -146,28 +231,28 @@ enum OfficialRole {
 }
 
 model Draw {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  matchId   String
-  match     Match    @relation(fields: [matchId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  players   DrawPlayer[]
+  players DrawPlayer[]
 }
 
 model DrawPlayer {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  drawId    String
-  draw      Draw     @relation(fields: [drawId], references: [id])
+  drawId String
+  draw   Draw   @relation(fields: [drawId], references: [id])
 
-  team      String
-  name      String
-  number    String
+  team     String
+  name     String
+  number   String
   nickname String?
-  type      DrawPlayerType
+  type     DrawPlayerType
 
   createdAt DateTime @default(now())
 }
@@ -178,10 +263,10 @@ enum DrawPlayerType {
 }
 
 model Substitution {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  matchId         String
-  match           Match    @relation(fields: [matchId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
 
   team            String
   playerOutName   String
@@ -192,65 +277,65 @@ model Substitution {
   period          String?
   notes           String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model RoomInspection {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  matchId   String
-  match     Match    @relation(fields: [matchId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
 
-  status    String   @default("PENDING")
-  notes     String?
+  status String  @default("PENDING")
+  notes  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  items     RoomInspectionItem[]
-  photos    RoomInspectionPhoto[]
+  items  RoomInspectionItem[]
+  photos RoomInspectionPhoto[]
 }
 
 model RoomInspectionItem {
-  id           String @id @default(cuid())
+  id String @id @default(cuid())
 
   inspectionId String
   inspection   RoomInspection @relation(fields: [inspectionId], references: [id])
 
-  label        String
-  status       String
-  notes        String?
+  label  String
+  status String
+  notes  String?
 }
 
 model RoomInspectionPhoto {
-  id           String @id @default(cuid())
+  id String @id @default(cuid())
 
   inspectionId String
   inspection   RoomInspection @relation(fields: [inspectionId], references: [id])
 
-  fileName     String
-  dataUrl      String @db.Text
+  fileName String
+  dataUrl  String @db.Text
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model MatchOperationalLog {
-  id        String          @id @default(cuid())
+  id String @id @default(cuid())
 
-  matchId   String
-  match     Match           @relation(fields: [matchId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
 
   userId    String?
   userName  String?
   userEmail String?
 
-  step      OperationalStep
+  step OperationalStep
 
   latitude  Float?
   longitude Float?
 
-  createdAt DateTime        @default(now())
+  createdAt DateTime @default(now())
 }
 
 enum OperationalStep {
@@ -261,14 +346,14 @@ enum OperationalStep {
 }
 
 model PushSubscription {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
+  endpoint String @unique
+  p256dh   String
+  auth     String
 
   userAgent String?
 
