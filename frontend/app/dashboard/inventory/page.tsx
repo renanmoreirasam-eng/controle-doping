@@ -490,39 +490,35 @@ export default function InventoryPage() {
       : myKitsUtilizados;
 
   return (
-    <div className="flex min-h-screen bg-[var(--cdb-light)]">
+    <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
       <Sidebar />
 
-      <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[var(--cdb-blue)]">
-                  📦 Estoque
-                </div>
-
-                <h1 className="text-3xl font-black tracking-tight text-[var(--cdb-dark)]">
-                  Controle de estoque de kits
-                </h1>
-
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Gerencie a entrada de kits, repasse para DCOs e acompanhe a
-                  numeração disponível, repassada e utilizada nos controles.
-                </p>
+      <div className="flex-1">
+        <header className="bg-white border-b border-slate-200 px-4 py-5 lg:px-8 lg:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-[var(--cdb-blue-soft)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
+                📦 Gestão de estoque
               </div>
 
-              <div className="rounded-3xl bg-[var(--cdb-blue)] px-6 py-5 text-white shadow-lg">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
-                  Total de kits
-                </p>
-                <p className="mt-1 text-4xl font-black">
-                  {summary?.total ?? 0}
-                </p>
-              </div>
+              <h1 className="mt-3 text-3xl font-black text-[var(--cdb-dark)] lg:text-4xl">
+                Estoque de Kits
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 lg:text-base">
+                Gerencie entradas, repasses para DCOs e acompanhe a numeração
+                disponível, em uso e utilizada nos controles.
+              </p>
             </div>
-          </section>
 
+            <div className="w-fit rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 font-bold text-white shadow-lg">
+              {summary?.total ?? 0} kits cadastrados
+            </div>
+          </div>
+        </header>
+
+        <section className="p-4 lg:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
           {isAdmin && (
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
@@ -1095,7 +1091,8 @@ export default function InventoryPage() {
               </div>
             )}
           </section>
-        </div>
+          </div>
+        </section>
 
         <ConfirmModal
           open={modal.open}
@@ -1106,8 +1103,8 @@ export default function InventoryPage() {
           cancelText="Fechar"
           onCancel={closeModal}
         />
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
 
