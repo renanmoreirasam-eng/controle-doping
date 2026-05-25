@@ -251,7 +251,10 @@ export default function MatchDetailsPage() {
   
   const hasRoomInspection = roomInspections.length > 0;
   const isControlDone = match?.status === 'CONTROL_DONE';
-  const isCheckedIn =
+  const checkInLog = getOperationalLog('CHECKIN_STADIUM');
+  const isCheckedIn = Boolean(checkInLog) || isControlDone;
+
+  const isScaleAccepted =
     match?.status === 'SCALE_ACCEPTED' ||
     match?.status === 'IN_PROGRESS' ||
     match?.status === 'CONTROL_DONE';
@@ -265,7 +268,10 @@ export default function MatchDetailsPage() {
   const savedDrawPlayers = draws.flatMap((draw) => draw.players);
 
   const canDoCheckIn =
-    !!match && !isControlDone && !isCheckedIn;
+    !!match &&
+    !isControlDone &&
+    !isCheckedIn &&
+    isScaleAccepted;
 
   const canStartMatch =
     !!match &&
@@ -350,7 +356,7 @@ export default function MatchDetailsPage() {
 
   function getStatusLabel(status: string) {
     if (status === 'SCHEDULED') return 'Agendado';
-    if (status === 'SCALE_ACCEPTED') return 'Check-in realizado';
+    if (status === 'SCALE_ACCEPTED') return 'Escala aceita';
     if (status === 'IN_PROGRESS') return 'Em andamento';
     if (status === 'CONTROL_DONE') return 'Controle realizado';
     if (status === 'CANCELED') return 'Cancelado';
@@ -359,13 +365,13 @@ export default function MatchDetailsPage() {
   }
 
   function getStatusClass(status: string) {
-    if (status === 'SCHEDULED') return 'bg-slate-100 text-slate-700';
-    if (status === 'SCALE_ACCEPTED') return 'bg-blue-100 text-blue-700';
-    if (status === 'IN_PROGRESS') return 'bg-yellow-100 text-yellow-700';
-    if (status === 'CONTROL_DONE') return 'bg-green-100 text-green-700';
-    if (status === 'CANCELED') return 'bg-red-100 text-red-700';
+    if (status === 'SCHEDULED') return 'border border-slate-200 bg-slate-100 text-slate-700';
+    if (status === 'SCALE_ACCEPTED') return 'border border-blue-200 bg-blue-100 text-blue-700';
+    if (status === 'IN_PROGRESS') return 'border border-yellow-200 bg-yellow-100 text-yellow-700';
+    if (status === 'CONTROL_DONE') return 'border border-green-200 bg-green-100 text-green-700';
+    if (status === 'CANCELED') return 'border border-red-200 bg-red-100 text-red-700';
 
-    return 'bg-slate-100 text-slate-700';
+    return 'border border-slate-200 bg-slate-100 text-slate-700';
   }
 
   function getCurrentPosition(): Promise<{
@@ -490,7 +496,7 @@ export default function MatchDetailsPage() {
                 href={getMapUrl(log)}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex mt-2 bg-slate-950 text-white px-3 py-2 rounded-xl font-semibold"
+                className="inline-flex mt-2 bg-[var(--cdb-blue)] text-white px-3 py-2 rounded-xl font-semibold"
               >
                 Ver local no mapa
               </a>
@@ -523,7 +529,7 @@ export default function MatchDetailsPage() {
     if (status === 'APROVADA_COM_OBSERVACOES') return 'bg-yellow-100 text-yellow-700';
     if (status === 'REPROVADA') return 'bg-red-100 text-red-700';
 
-    return 'bg-slate-100 text-slate-700';
+    return 'border border-slate-200 bg-slate-100 text-slate-700';
   }
 
   function updateRoomItem(index: number, field: 'status' | 'notes', value: string) {
@@ -839,55 +845,82 @@ function formatTimeOnly(date: string) {
 
   if (!match) {
     return (
-      <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
+      <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
         <Sidebar />
-        <div className="flex-1 p-8">Carregando...</div>
+        <div className="flex-1 p-8"><div className="rounded-3xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm">Carregando...</div></div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex flex-col lg:flex-row">
+    <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
       <Sidebar />
 
       <div className="flex-1">
-        <header className="bg-white border-b border-slate-200 px-4 py-5 lg:px-8 lg:py-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm text-slate-500 font-medium">
-                Operação da partida
-              </p>
+        <header className="px-4 py-6 lg:px-8 lg:py-8">
+          <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div className="relative p-6 lg:p-8">
+              <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-3xl">
+                  <span className="inline-flex w-fit items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
+                    Operação da partida
+                  </span>
 
-              <h1 className="text-2xl lg:text-4xl font-black mt-1 leading-tight">
-                {match.homeTeam} x {match.awayTeam}
-              </h1>
+                  <h1 className="mt-4 text-3xl font-black leading-tight text-[var(--cdb-dark)] lg:text-5xl">
+                    {match.homeTeam} x {match.awayTeam}
+                  </h1>
 
-              <p className="text-slate-500 mt-2">
-                {match.championship.name}
-              </p>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 lg:text-base">
+                    Acompanhe as etapas operacionais, oficiais escalados, sorteio, substituições e inspeção da sala.
+                  </p>
 
-              {match.missionCode && (
-                <p className="text-slate-500 mt-1">
-                  Código da missão: <strong>{match.missionCode}</strong>
-                </p>
-              )}
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <span className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700">
+                      {match.championship.name}
+                    </span>
+
+                    <span className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700">
+                      {formatDateOnly(match.matchDate)} às {formatTimeOnly(match.matchDate)}
+                    </span>
+
+                    <span className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700">
+                      {match.stadium.name} · {match.stadium.city}/{match.stadium.state}
+                    </span>
+
+                    {match.missionCode && (
+                      <span className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-black text-[var(--cdb-blue)]">
+                        Missão {match.missionCode}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-row flex-wrap gap-3 lg:flex-col lg:items-end">
+                  <span
+                    className={`${getStatusClass(
+                      match.status,
+                    )} w-fit rounded-2xl px-4 py-2 text-xs font-black shadow-sm lg:px-5 lg:py-3 lg:text-sm`}
+                  >
+                    {getStatusLabel(match.status)}
+                  </span>
+
+                  <Link
+                    href="/dashboard/matches"
+                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-[var(--cdb-blue)]/30 hover:bg-blue-50 hover:text-[var(--cdb-blue)]"
+                  >
+                    ← Voltar para jogos
+                  </Link>
+                </div>
+              </div>
             </div>
-
-            <span
-              className={`${getStatusClass(
-                match.status,
-              )} w-fit px-4 lg:px-5 py-2 lg:py-3 rounded-2xl text-xs lg:text-sm font-semibold`}
-            >
-              {getStatusLabel(match.status)}
-            </span>
           </div>
         </header>
 
-        <section className="p-4 lg:p-8 grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
-<details open className="xl:col-span-3 group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+        <section className="grid grid-cols-1 gap-4 px-4 pb-8 lg:gap-6 lg:px-8 xl:grid-cols-3">
+<details open className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:col-span-3">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-xl lg:text-2xl font-black">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                     Status operacional
                   </h2>
 
@@ -898,7 +931,7 @@ function formatTimeOnly(date: string) {
 
                 <div className="flex items-center gap-3">
 
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                     ⌄
                   </span>
                 </div>
@@ -917,7 +950,7 @@ function formatTimeOnly(date: string) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-slate-900">
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
                         1. Check-in no estádio
                       </p>
 
@@ -938,7 +971,7 @@ function formatTimeOnly(date: string) {
                   {canDoCheckIn && (
                     <button
                       onClick={() => updateMatchStatus('SCALE_ACCEPTED')}
-                      className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl font-semibold transition"
+                      className="mt-4 w-full bg-[var(--cdb-blue)] text-white hover:brightness-95 py-3 rounded-2xl font-semibold transition"
                     >
                       Fazer check-in no estádio
                     </button>
@@ -956,7 +989,7 @@ function formatTimeOnly(date: string) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-slate-900">
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
                         2. Jogo em andamento
                       </p>
 
@@ -985,7 +1018,9 @@ function formatTimeOnly(date: string) {
 
                   {!isCheckedIn && !isControlDone && (
                     <p className="mt-4 text-xs text-slate-500">
-                      Aguardando check-in no estádio.
+                      {isScaleAccepted
+                        ? 'Aguardando check-in no estádio.'
+                        : 'Aguardando confirmação da escala pelos oficiais.'}
                     </p>
                   )}
                 </div>
@@ -1001,7 +1036,7 @@ function formatTimeOnly(date: string) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-slate-900">
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
                         3. Sorteio realizado
                       </p>
 
@@ -1047,7 +1082,7 @@ function formatTimeOnly(date: string) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-slate-900">
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
                         4. Controle realizado
                       </p>
 
@@ -1091,10 +1126,10 @@ function formatTimeOnly(date: string) {
             </details>
 
           <div className="xl:col-span-2 space-y-4 lg:space-y-6">
-            <details open className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+            <details open className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-xl lg:text-2xl font-black">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                     Informações da partida
                   </h2>
 
@@ -1105,7 +1140,7 @@ function formatTimeOnly(date: string) {
 
                 <div className="flex items-center gap-3">
 
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                     ⌄
                   </span>
                 </div>
@@ -1225,7 +1260,7 @@ function formatTimeOnly(date: string) {
                       Principal exame
                     </p>
 
-                    <p className="font-black text-slate-900">
+                    <p className="font-black text-[var(--cdb-dark)]">
                       Nº {examPlayer.number} - {examPlayer.name}
                     </p>
                   </div>
@@ -1237,7 +1272,7 @@ function formatTimeOnly(date: string) {
                       Reserva
                     </p>
 
-                    <p className="font-black text-slate-900">
+                    <p className="font-black text-[var(--cdb-dark)]">
                       Nº {reservePlayer.number} - {reservePlayer.name}
                     </p>
                   </div>
@@ -1266,10 +1301,10 @@ function formatTimeOnly(date: string) {
                 </p>
               </div>
             )}
-            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-xl lg:text-2xl font-black">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                     Oficiais escalados
                   </h2>
 
@@ -1283,7 +1318,7 @@ function formatTimeOnly(date: string) {
               <span className="bg-slate-100 px-3 py-1 rounded-2xl text-xs font-semibold text-slate-700">
                 {scales.length} oficiais
               </span>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                     ⌄
                   </span>
                 </div>
@@ -1357,10 +1392,10 @@ function formatTimeOnly(date: string) {
             {canShowOperationalSections && (
               <>
             
-            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-xl lg:text-2xl font-black">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                     Substituições
                   </h2>
 
@@ -1374,7 +1409,7 @@ function formatTimeOnly(date: string) {
               <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
                 {substitutions.length > 0 ? `${substitutions.length} registrada(s)` : 'Opcional'}
               </span>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                     ⌄
                   </span>
                 </div>
@@ -1385,14 +1420,14 @@ function formatTimeOnly(date: string) {
                 {(['HOME', 'AWAY'] as const).map((team) => (
                   <div
                     key={team}
-                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50"
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5"
                   >
                     <div className="mb-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
                         {team === 'HOME' ? 'Equipe Mandante' : 'Equipe Visitante'}
                       </p>
 
-                      <h3 className="text-xl font-black text-slate-900">
+                      <h3 className="text-xl font-black text-[var(--cdb-dark)]">
                         {getTeamName(team)}
                       </h3>
                     </div>
@@ -1414,7 +1449,7 @@ function formatTimeOnly(date: string) {
                               </label>
 
                               <input
-                                className="w-full border border-slate-200 rounded-xl p-3 disabled:bg-slate-100"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
                                 placeholder="Ex: 10"
                                 value={row.playerOutNumber}
                                 disabled={isControlDone}
@@ -1435,7 +1470,7 @@ function formatTimeOnly(date: string) {
                               </label>
 
                               <input
-                                className="w-full border border-slate-200 rounded-xl p-3 disabled:bg-slate-100"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
                                 placeholder="Ex: 18"
                                 value={row.playerInNumber}
                                 disabled={isControlDone}
@@ -1461,7 +1496,7 @@ function formatTimeOnly(date: string) {
                 <button
                   disabled={isControlDone}
                   onClick={saveSubstitutions}
-                  className="bg-slate-950 disabled:bg-slate-300 text-white px-5 py-3 rounded-2xl font-semibold"
+                  className="bg-[var(--cdb-blue)] disabled:bg-slate-300 text-white hover:brightness-95 px-5 py-3 rounded-2xl font-semibold"
                 >
                   Salvar substituições
                 </button>
@@ -1475,10 +1510,10 @@ function formatTimeOnly(date: string) {
               </div>
             </details>
             {!hasDrawDone && (
-            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                   <div>
-                    <h2 className="text-xl lg:text-2xl font-black">
+                    <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                       Registro dos atletas sorteados
                     </h2>
   
@@ -1492,7 +1527,7 @@ function formatTimeOnly(date: string) {
                 <span className="bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
                   Sorteio pendente
                 </span>
-                    <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                       ⌄
                     </span>
                   </div>
@@ -1500,19 +1535,19 @@ function formatTimeOnly(date: string) {
   
                 <div className="px-5 pb-5 lg:px-8 lg:pb-8">
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                    <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5">
                       <div className="mb-4">
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
                           Mandante
                         </p>
   
-                        <h3 className="text-xl font-black text-slate-900">
+                        <h3 className="text-xl font-black text-[var(--cdb-dark)]">
                           {match.homeTeam}
                         </h3>
                       </div>
   
                       <div className="space-y-4">
-                        <div className="bg-white border border-red-100 rounded-2xl p-4">
+                        <div className="rounded-2xl border border-red-100 bg-white p-4 shadow-sm">
                           <div className="flex items-center justify-between gap-3 mb-3">
                             <h4 className="font-black text-red-700">
                               Principal Exame
@@ -1524,29 +1559,35 @@ function formatTimeOnly(date: string) {
                           </div>
   
                           <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Número"
-                              value={drawForm.homeExamNumber}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('homeExamNumber', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Número"
+                                value={drawForm.homeExamNumber}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('homeExamNumber', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Número *</label>
+                            </div>
   
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Nome do atleta"
-                              value={drawForm.homeExamName}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('homeExamName', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Nome do atleta"
+                                value={drawForm.homeExamName}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('homeExamName', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Nome do atleta *</label>
+                            </div>
                           </div>
                         </div>
   
-                        <div className="bg-white border border-yellow-100 rounded-2xl p-4">
+                        <div className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm">
                           <div className="flex items-center justify-between gap-3 mb-3">
                             <h4 className="font-black text-yellow-700">
                               Reserva
@@ -1558,43 +1599,49 @@ function formatTimeOnly(date: string) {
                           </div>
   
                           <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Número"
-                              value={drawForm.homeReserveNumber}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('homeReserveNumber', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Número"
+                                value={drawForm.homeReserveNumber}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('homeReserveNumber', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Número</label>
+                            </div>
   
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Nome do atleta"
-                              value={drawForm.homeReserveName}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('homeReserveName', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Nome do atleta"
+                                value={drawForm.homeReserveName}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('homeReserveName', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Nome do atleta</label>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
   
-                    <div className="border border-slate-200 rounded-3xl p-4 lg:p-5 bg-slate-50">
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5">
                       <div className="mb-4">
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
                           Visitante
                         </p>
   
-                        <h3 className="text-xl font-black text-slate-900">
+                        <h3 className="text-xl font-black text-[var(--cdb-dark)]">
                           {match.awayTeam}
                         </h3>
                       </div>
   
                       <div className="space-y-4">
-                        <div className="bg-white border border-red-100 rounded-2xl p-4">
+                        <div className="rounded-2xl border border-red-100 bg-white p-4 shadow-sm">
                           <div className="flex items-center justify-between gap-3 mb-3">
                             <h4 className="font-black text-red-700">
                               Principal Exame
@@ -1606,29 +1653,35 @@ function formatTimeOnly(date: string) {
                           </div>
   
                           <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Número"
-                              value={drawForm.awayExamNumber}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('awayExamNumber', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Número"
+                                value={drawForm.awayExamNumber}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('awayExamNumber', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Número *</label>
+                            </div>
   
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Nome do atleta"
-                              value={drawForm.awayExamName}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('awayExamName', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Nome do atleta"
+                                value={drawForm.awayExamName}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('awayExamName', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Nome do atleta *</label>
+                            </div>
                           </div>
                         </div>
   
-                        <div className="bg-white border border-yellow-100 rounded-2xl p-4">
+                        <div className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm">
                           <div className="flex items-center justify-between gap-3 mb-3">
                             <h4 className="font-black text-yellow-700">
                               Reserva
@@ -1640,25 +1693,31 @@ function formatTimeOnly(date: string) {
                           </div>
   
                           <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3">
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Número"
-                              value={drawForm.awayReserveNumber}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('awayReserveNumber', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Número"
+                                value={drawForm.awayReserveNumber}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('awayReserveNumber', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Número</label>
+                            </div>
   
-                            <input
-                              className="border rounded-xl p-3 disabled:bg-slate-100"
-                              placeholder="Nome do atleta"
-                              value={drawForm.awayReserveName}
-                              disabled={isControlDone}
-                              onChange={(e) =>
-                                updateDrawForm('awayReserveName', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                placeholder="Nome do atleta"
+                                value={drawForm.awayReserveName}
+                                disabled={isControlDone}
+                                onChange={(e) =>
+                                  updateDrawForm('awayReserveName', e.target.value)
+                                }
+                              />
+                              <label className="mt-2 block text-xs font-bold text-slate-600">Nome do atleta</label>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1673,7 +1732,7 @@ function formatTimeOnly(date: string) {
                     <button
                       disabled={isControlDone}
                       onClick={saveDraw}
-                      className="bg-green-600 disabled:bg-slate-300 text-white px-5 py-3 rounded-2xl font-semibold"
+                      className="rounded-2xl bg-green-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-green-700 disabled:bg-slate-300"
                     >
                       Salvar sorteio
                     </button>
@@ -1682,10 +1741,10 @@ function formatTimeOnly(date: string) {
               </details>
             )}
             {hasDrawDone && (
-            <details className="group bg-green-50 rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+            <details className="group overflow-hidden rounded-3xl border border-green-200 bg-green-50 shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                   <div>
-                    <h2 className="text-xl lg:text-2xl font-black">
+                    <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                       Sorteio realizado
                     </h2>
   
@@ -1696,7 +1755,7 @@ function formatTimeOnly(date: string) {
   
                   <div className="flex items-center gap-3">
   
-                    <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                       ⌄
                     </span>
                   </div>
@@ -1717,10 +1776,10 @@ function formatTimeOnly(date: string) {
             
             {canShowOperationalSections && (
               <>
-            <details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-xl lg:text-2xl font-black">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                     Cronômetro
                   </h2>
 
@@ -1731,7 +1790,7 @@ function formatTimeOnly(date: string) {
 
                 <div className="flex items-center gap-3">
 
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                     ⌄
                   </span>
                 </div>
@@ -1766,10 +1825,10 @@ function formatTimeOnly(date: string) {
               </div>
             </details>
 
-<details className="group bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
+<details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <h2 className="text-xl lg:text-2xl font-black">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
                     Inspeção da sala
                   </h2>
 
@@ -1780,7 +1839,7 @@ function formatTimeOnly(date: string) {
 
                 <div className="flex items-center gap-3">
 
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
                     ⌄
                   </span>
                 </div>
@@ -1792,7 +1851,7 @@ function formatTimeOnly(date: string) {
   className={`block text-center py-4 rounded-2xl font-semibold transition ${
     hasRoomInspection
       ? 'bg-green-600 text-white hover:bg-green-700'
-      : 'bg-blue-600 text-white hover:bg-blue-700'
+      : 'bg-[var(--cdb-blue)] text-white hover:brightness-95'
   }`}
 >
   {hasRoomInspection

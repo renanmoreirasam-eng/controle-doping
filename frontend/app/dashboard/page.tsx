@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import EnableNotificationsButton from "@/components/EnableNotificationsButton";
+import EnableNotificationsButton from '@/components/EnableNotificationsButton';
 
 import { api } from '../../services/api';
 import { getUser } from '../../services/auth';
@@ -71,16 +71,13 @@ export default function Dashboard() {
         loggedUser?.userId ||
         loggedUser?.user?.id;
 
-      const loggedUserEmail =
-        loggedUser?.email ||
-        loggedUser?.user?.email;
+      const loggedUserEmail = loggedUser?.email || loggedUser?.user?.email;
 
       const response = await api.get('/match-officials');
 
       const scales = response.data.filter((scale: Scale) => {
         const isPending =
-          scale.confirmed === null ||
-          scale.confirmed === undefined;
+          scale.confirmed === null || scale.confirmed === undefined;
 
         const belongsToLoggedUser =
           scale.official?.user?.id === loggedUserId ||
@@ -114,19 +111,19 @@ export default function Dashboard() {
 
   function getStatusClass(status: string) {
     if (status === 'SCHEDULED') {
-      return 'bg-blue-50 text-[var(--cdb-blue)] border border-blue-100';
+      return 'bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] border border-blue-100';
     }
 
     if (status === 'SCALE_ACCEPTED') {
-      return 'bg-emerald-50 text-[var(--cdb-green)] border border-emerald-100';
+      return 'bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] border border-emerald-100';
     }
 
     if (status === 'IN_PROGRESS') {
-      return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
+      return 'bg-[var(--cdb-yellow-soft)] text-[#9A7600] border border-yellow-200';
     }
 
     if (status === 'CONTROL_DONE') {
-      return 'bg-emerald-50 text-[var(--cdb-green)] border border-emerald-100';
+      return 'bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] border border-emerald-100';
     }
 
     if (status === 'CANCELED') {
@@ -169,72 +166,70 @@ export default function Dashboard() {
       <Sidebar />
 
       <div className="flex-1">
-        <header className="relative overflow-hidden bg-white border-b border-blue-100 px-4 lg:px-8 py-5 lg:py-7">
-          <div className="absolute inset-y-0 right-0 hidden lg:block w-96 bg-gradient-to-l from-blue-50 via-green-50 to-transparent" />
-
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm text-[var(--cdb-blue)] font-black uppercase tracking-[0.2em]">
-                Painel operacional
-              </p>
+              <div className="inline-flex items-center gap-2 bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.18em]">
+                📊 Painel operacional
+              </div>
 
-              <h1 className="text-3xl lg:text-4xl font-black mt-1 text-slate-950">
+              <h1 className="text-3xl lg:text-4xl font-black mt-3 text-[var(--cdb-dark)]">
                 Dashboard
               </h1>
 
-              <p className="text-slate-500 mt-2">
+              <p className="text-slate-500 mt-2 max-w-2xl">
                 Visão geral das partidas, escalas e controles de doping.
               </p>
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-100 text-[var(--cdb-green)] px-4 py-2 rounded-2xl font-black w-fit">
-              Sistema online
+            <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
+              {matches.length} jogos cadastrados
             </div>
           </div>
         </header>
 
         <section className="p-4 lg:p-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-5">
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-blue-100 hover:shadow-md transition">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-5 mb-8">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Jogos cadastrados
                   </p>
 
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-dark)]">
                     {matches.length}
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-blue-50 text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
                   🏟️
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-yellow-100 hover:shadow-md transition">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Em andamento
                   </p>
 
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-yellow-600">
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[#9A7600]">
                     {inProgress}
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-yellow-50 text-yellow-700 flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-yellow-soft)] text-[#9A7600] flex items-center justify-center text-3xl">
                   🔴
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-emerald-100 hover:shadow-md transition">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Controles realizados
                   </p>
 
@@ -243,16 +238,16 @@ export default function Dashboard() {
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-emerald-50 text-[var(--cdb-green)] flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
                   ✅
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-blue-100 hover:shadow-md transition">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm">
+                  <p className="text-slate-500 text-sm font-semibold">
                     Jogos agendados
                   </p>
 
@@ -261,7 +256,7 @@ export default function Dashboard() {
                   </h2>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-blue-50 text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
                   📅
                 </div>
               </div>
@@ -269,18 +264,18 @@ export default function Dashboard() {
 
             <Link
               href="/dashboard/scales?status=PENDING"
-              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:-translate-y-0.5 hover:shadow-md ${
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
                 pendingScales.length > 0
-                  ? 'bg-yellow-50 border-yellow-200'
+                  ? 'bg-[var(--cdb-yellow-soft)] border-yellow-200'
                   : 'bg-white border-slate-200'
               }`}
             >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p
-                    className={`text-sm ${
+                    className={`text-sm font-semibold ${
                       pendingScales.length > 0
-                        ? 'text-yellow-700'
+                        ? 'text-[#9A7600]'
                         : 'text-slate-500'
                     }`}
                   >
@@ -290,7 +285,7 @@ export default function Dashboard() {
                   <h2
                     className={`text-3xl lg:text-4xl font-black mt-2 ${
                       pendingScales.length > 0
-                        ? 'text-yellow-700'
+                        ? 'text-[#9A7600]'
                         : 'text-slate-700'
                     }`}
                   >
@@ -305,8 +300,8 @@ export default function Dashboard() {
                 <div
                   className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
                     pendingScales.length > 0
-                      ? 'bg-yellow-100'
-                      : 'bg-slate-100'
+                      ? 'bg-yellow-100 text-[#9A7600]'
+                      : 'bg-slate-100 text-slate-600'
                   }`}
                 >
                   📋
@@ -318,15 +313,15 @@ export default function Dashboard() {
           {pendingScales.length > 0 && (
             <Link
               href="/dashboard/scales?status=PENDING"
-              className="block mt-6 bg-yellow-50 border border-yellow-200 rounded-3xl p-5 lg:p-6 hover:bg-yellow-100 transition"
+              className="block mb-8 bg-[var(--cdb-yellow-soft)] border border-yellow-200 rounded-3xl p-5 lg:p-6 hover:bg-yellow-100 transition"
             >
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-yellow-700 font-black">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#9A7600] font-black">
                     Ação necessária
                   </p>
 
-                  <h2 className="text-xl lg:text-2xl font-black text-slate-900 mt-2">
+                  <h2 className="text-xl lg:text-2xl font-black text-[var(--cdb-dark)] mt-2">
                     Você possui {pendingScales.length} escala(s) pendente(s) de aprovação
                   </h2>
 
@@ -345,11 +340,11 @@ export default function Dashboard() {
             </Link>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-8">
-            <div className="xl:col-span-2 bg-white rounded-3xl shadow-sm border border-blue-100 p-4 lg:p-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="xl:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-950">
+                  <h2 className="text-2xl font-black text-[var(--cdb-dark)]">
                     Operações recentes
                   </h2>
 
@@ -358,7 +353,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                <div className="bg-blue-50 text-[var(--cdb-blue)] px-4 py-2 rounded-2xl text-sm font-black w-fit">
+                <div className="bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-2xl text-sm font-black w-fit">
                   {matches.length} jogos
                 </div>
               </div>
@@ -367,11 +362,11 @@ export default function Dashboard() {
                 {recentMatches.map((match) => (
                   <div
                     key={match.id}
-                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 hover:border-blue-200 hover:bg-blue-50/30 transition"
+                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 hover:border-blue-200 hover:bg-[var(--cdb-blue-soft)]/40 transition"
                   >
                     <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                       <div>
-                        <h3 className="text-xl lg:text-2xl font-black text-slate-950">
+                        <h3 className="text-xl lg:text-2xl font-black text-[var(--cdb-dark)]">
                           {match.homeTeam} x {match.awayTeam}
                         </h3>
 
@@ -380,15 +375,15 @@ export default function Dashboard() {
                         </p>
 
                         <div className="flex flex-wrap gap-2 mt-4">
-                          <div className="bg-slate-100 px-3 py-2 rounded-xl text-sm">
+                          <div className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
                             🏟️ {match.stadium.name}
                           </div>
 
-                          <div className="bg-slate-100 px-3 py-2 rounded-xl text-sm">
+                          <div className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
                             📍 {match.stadium.city}/{match.stadium.state}
                           </div>
 
-                          <div className="bg-slate-100 px-3 py-2 rounded-xl text-sm">
+                          <div className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
                             🕒{' '}
                             {new Date(match.matchDate).toLocaleString(
                               'pt-BR',
@@ -411,10 +406,10 @@ export default function Dashboard() {
                 ))}
 
                 {matches.length === 0 && (
-                  <div className="border border-dashed border-blue-200 rounded-3xl p-8 text-center bg-blue-50/30">
+                  <div className="border border-dashed border-slate-300 rounded-3xl p-8 text-center bg-slate-50">
                     <div className="text-5xl mb-4">⚽</div>
 
-                    <h3 className="text-xl font-black text-slate-950">
+                    <h3 className="text-xl font-black text-[var(--cdb-dark)]">
                       Nenhuma operação encontrada
                     </h3>
 
@@ -427,14 +422,14 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-6">
-              <div className="bg-white rounded-3xl shadow-sm border border-blue-100 p-4 lg:p-6">
-                <h2 className="text-2xl font-black mb-4 text-slate-950">
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-6">
+                <h2 className="text-2xl font-black mb-4 text-[var(--cdb-dark)]">
                   Resumo operacional
                 </h2>
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-slate-500">
+                    <span className="text-slate-500 font-semibold">
                       Jogos cadastrados
                     </span>
 
@@ -444,17 +439,15 @@ export default function Dashboard() {
                   </div>
 
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-slate-500">
+                    <span className="text-slate-500 font-semibold">
                       Em andamento
                     </span>
 
-                    <strong className="text-yellow-600">
-                      {inProgress}
-                    </strong>
+                    <strong className="text-[#9A7600]">{inProgress}</strong>
                   </div>
 
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-slate-500">
+                    <span className="text-slate-500 font-semibold">
                       Finalizados
                     </span>
 
@@ -464,14 +457,14 @@ export default function Dashboard() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">
+                    <span className="text-slate-500 font-semibold">
                       Minhas pendências
                     </span>
 
                     <strong
                       className={
                         pendingScales.length > 0
-                          ? 'text-yellow-700'
+                          ? 'text-[#9A7600]'
                           : 'text-slate-700'
                       }
                     >
@@ -481,13 +474,13 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="relative overflow-hidden bg-[var(--cdb-blue)] text-white rounded-3xl p-4 lg:p-6 shadow-sm">
+              <div className="relative overflow-hidden bg-[var(--cdb-blue)] text-white rounded-3xl p-5 lg:p-6 shadow-sm">
                 <div className="absolute -right-10 -top-10 w-32 h-32 bg-[var(--cdb-green)] rounded-full opacity-30" />
                 <div className="absolute -right-4 bottom-4 w-20 h-20 bg-[var(--cdb-yellow)] rounded-full opacity-30" />
 
                 <div className="relative">
                   <h2 className="text-2xl font-black mb-3">
-                    Controle Doping
+                    Controle de Doping Brasil
                   </h2>
 
                   <p className="text-blue-100">
@@ -496,19 +489,19 @@ export default function Dashboard() {
 
                   <Link
                     href="/dashboard/matches"
-                    className="block mt-6 bg-white text-[var(--cdb-blue)] text-center py-3 rounded-2xl font-black"
+                    className="block mt-6 bg-white text-[var(--cdb-blue)] text-center py-3 rounded-2xl font-black hover:bg-slate-50 transition"
                   >
                     Ver jogos
                   </Link>
                 </div>
               </div>
 
-              <div className="rounded-xl border bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-900">
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 lg:p-6">
+                <h2 className="text-2xl font-black text-[var(--cdb-dark)]">
                   Notificações
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-slate-600">
                   Ative para receber avisos quando houver escala pendente.
                 </p>
 
@@ -516,7 +509,6 @@ export default function Dashboard() {
                   <EnableNotificationsButton />
                 </div>
               </div>
-
             </div>
           </div>
         </section>

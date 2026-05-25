@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { Sidebar } from '../../../components/Sidebar';
@@ -91,6 +91,8 @@ export default function MatchesPage() {
   ).toUpperCase();
 
   const isAdmin = userRole === 'ADMIN';
+
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   async function loadMatches() {
     const response = await api.get('/matches');
@@ -291,6 +293,13 @@ export default function MatchesPage() {
     setMatchTime(formatTimeOnly(match.matchDate));
 
     setStatus(match.status);
+
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 100);
   }
 
   async function createMatch() {
@@ -559,7 +568,7 @@ export default function MatchesPage() {
       ).length || 0;
 
     if (confirmedCount === 1) {
-      return 'bg-blue-50 text-[var(--cdb-blue)] border border-blue-100';
+      return 'bg-blue-50 text-[var(--cdb-blue)] border border-slate-200';
     }
 
     if (confirmedCount >= 2) {
@@ -574,78 +583,108 @@ export default function MatchesPage() {
       <Sidebar />
 
       <div className="flex-1">
-        <header className="relative overflow-hidden bg-white border-b border-blue-100 px-4 lg:px-8 py-5 lg:py-7">
-          <div className="absolute inset-y-0 right-0 hidden lg:block w-96 bg-gradient-to-l from-blue-50 via-green-50 to-transparent" />
-
-          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm text-[var(--cdb-blue)] font-black uppercase tracking-[0.2em]">
-                Gestão operacional
-              </p>
+              <div className="inline-flex items-center gap-2 bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.18em]">
+                ⚽ Gestão operacional
+              </div>
 
-              <h1 className="text-3xl lg:text-4xl font-black mt-1 text-slate-950">
-                Partidas
+              <h1 className="text-3xl lg:text-4xl font-black mt-3 text-[var(--cdb-dark)]">
+                Jogos
               </h1>
 
-              <p className="text-slate-500 mt-2">
-                Cadastre, acompanhe e opere os jogos do controle de doping.
+              <p className="text-slate-500 mt-2 max-w-2xl">
+                Cadastre, acompanhe e opere as partidas do controle de doping.
               </p>
             </div>
 
-            <div className="bg-[var(--cdb-blue)] text-white px-4 lg:px-5 py-3 rounded-2xl font-black w-fit shadow-sm">
-              {matches.length} jogos
+            <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
+              {matches.length} jogos cadastrados
             </div>
           </div>
         </header>
 
         <section className="p-4 lg:p-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-5 mb-6 lg:mb-8">
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
-              <p className="text-slate-500 text-sm">
-                Total de jogos
-              </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5 mb-8">
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Jogos cadastrados
+                  </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
-                {matches.length}
-              </h2>
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-dark)]">
+                    {matches.length}
+                  </h2>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
+                  🏟️
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
-              <p className="text-slate-500 text-sm">
-                Agendados
-              </p>
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Jogos agendados
+                  </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
-                {scheduledMatches}
-              </h2>
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
+                    {scheduledMatches}
+                  </h2>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
+                  📅
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
-              <p className="text-slate-500 text-sm">
-                Em andamento
-              </p>
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Em andamento
+                  </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-yellow-600">
-                {progressMatches}
-              </h2>
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[#9A7600]">
+                    {progressMatches}
+                  </h2>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-yellow-soft)] text-[#9A7600] flex items-center justify-center text-3xl">
+                  🔴
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-4 lg:p-6 border border-blue-100 shadow-sm hover:shadow-md transition">
-              <p className="text-slate-500 text-sm">
-                Finalizados
-              </p>
+            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Controles realizados
+                  </p>
 
-              <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
-                {completedMatches}
-              </h2>
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
+                    {completedMatches}
+                  </h2>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
+                  ✅
+                </div>
+              </div>
             </div>
           </div>
 
           {isAdmin && (
-            <div className="bg-white rounded-3xl border border-blue-100 shadow-sm p-4 lg:p-6 mb-6 lg:mb-8">
+            <div ref={formRef} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6 mb-6 lg:mb-8 scroll-mt-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <div>
-                  <h2 className="text-2xl font-black">
+                  <h2 className="text-2xl font-black text-[var(--cdb-dark)]">
                     {editingId
                       ? 'Editar jogo'
                       : 'Cadastrar jogo'}
@@ -657,7 +696,7 @@ export default function MatchesPage() {
                 </div>
 
                 {editingId && (
-                  <span className="bg-blue-50 text-[var(--cdb-blue)] border border-blue-100 px-4 py-2 rounded-2xl text-sm font-black">
+                  <span className="bg-blue-50 text-[var(--cdb-blue)] border border-slate-200 px-4 py-2 rounded-2xl text-sm font-black">
                     Modo edição
                   </span>
                 )}
@@ -694,21 +733,21 @@ export default function MatchesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3">
                 <div className="xl:col-span-2">
                   <input
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     placeholder="Código da missão"
                     value={missionCode}
                     onChange={(e) => setMissionCode(e.target.value)}
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Informe o código da missão.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Código da missão
                   </p>
                 </div>
 
                 <div className="xl:col-span-5">
                   <input
                     list="championships-list"
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     placeholder="Digite o campeonato"
                     value={championshipName}
                     onChange={(e) => {
@@ -722,15 +761,15 @@ export default function MatchesPage() {
                     }}
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Digite e selecione um campeonato da lista.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Campeonato *
                   </p>
                 </div>
 
                 <div className="xl:col-span-5">
                   <input
                     list="stadiums-list"
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     placeholder="Digite o estádio"
                     value={stadiumName}
                     onChange={(e) => {
@@ -743,15 +782,15 @@ export default function MatchesPage() {
                     }}
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Digite e selecione um estádio da lista.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Estádio *
                   </p>
                 </div>
 
                 <div className="xl:col-span-3">
                   <input
                     list="teams-list"
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     placeholder="Digite o mandante"
                     value={homeTeam}
                     onChange={(e) =>
@@ -759,15 +798,15 @@ export default function MatchesPage() {
                     }
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Digite e selecione um time da lista.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Time mandante *
                   </p>
                 </div>
 
                 <div className="xl:col-span-3">
                   <input
                     list="teams-list"
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     placeholder="Digite o visitante"
                     value={awayTeam}
                     onChange={(e) =>
@@ -775,34 +814,34 @@ export default function MatchesPage() {
                     }
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Digite e selecione um time da lista.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Time visitante *
                   </p>
                 </div>
 
                 <div className="xl:col-span-3">
                   <input
                     type="date"
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     value={matchDate}
                     onChange={(e) => setMatchDate(e.target.value)}
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Selecione a data do jogo.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Data do jogo *
                   </p>
                 </div>
 
                 <div className="xl:col-span-3">
                   <input
                     type="time"
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 w-full"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full"
                     value={matchTime}
                     onChange={(e) => setMatchTime(e.target.value)}
                   />
 
-                  <p className="text-xs text-slate-400 mt-1 px-2">
-                    Selecione o horário do jogo.
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Horário do jogo *
                   </p>
                 </div>
               </div>
@@ -810,7 +849,7 @@ export default function MatchesPage() {
               {editingId && (
                 <div className="mt-4">
                   <select
-                    className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30"
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)]"
                     value={status}
                     onChange={(e) =>
                       setStatus(e.target.value)
@@ -836,6 +875,10 @@ export default function MatchesPage() {
                       Cancelado
                     </option>
                   </select>
+
+                  <p className="mt-2 px-2 text-xs font-bold text-slate-700">
+                    Status *
+                  </p>
                 </div>
               )}
 
@@ -852,7 +895,7 @@ export default function MatchesPage() {
                 {editingId && (
                   <button
                     onClick={clearForm}
-                    className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold text-center"
+                    className="bg-slate-100 text-slate-800 px-6 py-3 rounded-2xl font-semibold text-center hover:bg-slate-200 transition"
                   >
                     Cancelar
                   </button>
@@ -861,17 +904,17 @@ export default function MatchesPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-3xl border border-blue-100 shadow-sm p-4 lg:p-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6">
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
               <div>
-                <h2 className="text-2xl font-black text-slate-950">Jogos cadastrados</h2>
+                <h2 className="text-2xl font-black text-[var(--cdb-dark)]">Jogos cadastrados</h2>
                 <p className="text-slate-500 mt-1">
                   Controle operacional das partidas.
                 </p>
               </div>
 
               <input
-                className="border border-blue-100 rounded-2xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 bg-slate-50 w-full xl:w-[420px]"
+                className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full xl:w-[420px]"
                 placeholder="Buscar por missão, jogo, estádio ou campeonato..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -884,7 +927,7 @@ export default function MatchesPage() {
                 className={`px-5 py-3 rounded-2xl font-semibold transition ${
                   activeTab === 'ACTIVE'
                     ? 'bg-[var(--cdb-blue)] text-white shadow-sm'
-                    : 'bg-blue-50 text-[var(--cdb-blue)] hover:bg-blue-100'
+                    : 'bg-white text-[var(--cdb-blue)] border border-slate-200 hover:bg-[var(--cdb-blue-soft)]'
                 }`}
               >
                 Jogos ativos ({activeMatches})
@@ -895,7 +938,7 @@ export default function MatchesPage() {
                 className={`px-5 py-3 rounded-2xl font-semibold transition ${
                   activeTab === 'DONE'
                     ? 'bg-[var(--cdb-green)] text-white shadow-sm'
-                    : 'bg-blue-50 text-[var(--cdb-blue)] hover:bg-blue-100'
+                    : 'bg-white text-[var(--cdb-blue)] border border-slate-200 hover:bg-[var(--cdb-blue-soft)]'
                 }`}
               >
                 Jogos concluídos ({doneMatches})
@@ -906,7 +949,7 @@ export default function MatchesPage() {
               {filteredMatches.map((match) => (
                 <div
                   key={match.id}
-                  className="bg-white border border-blue-100 rounded-3xl p-5 shadow-sm"
+                  className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-3 mb-4">
                     <div className="flex items-start justify-between gap-3">
@@ -915,7 +958,7 @@ export default function MatchesPage() {
                           {match.missionCode || 'Sem missão'}
                         </p>
 
-                        <h3 className="text-xl font-black text-slate-900 mt-1 leading-tight">
+                        <h3 className="text-xl font-black text-[var(--cdb-dark)] mt-1 leading-tight">
                           {match.homeTeam} x {match.awayTeam}
                         </h3>
 
@@ -935,12 +978,12 @@ export default function MatchesPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 text-sm">
-                    <div className="bg-blue-50/50 rounded-2xl p-3">
+                    <div className="bg-slate-50 rounded-2xl p-3">
                       <p className="text-slate-500">Estádio</p>
                       <strong>🏟️ {match.stadium.name}</strong>
                     </div>
 
-                    <div className="bg-blue-50/50 rounded-2xl p-3">
+                    <div className="bg-slate-50 rounded-2xl p-3">
                       <p className="text-slate-500">Cidade</p>
                       <strong>
                         {match.stadium.city}/{match.stadium.state}
@@ -948,12 +991,12 @@ export default function MatchesPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-blue-50/50 rounded-2xl p-3">
+                      <div className="bg-slate-50 rounded-2xl p-3">
                         <p className="text-slate-500">Data</p>
                         <strong>{formatDate(match.matchDate)}</strong>
                       </div>
 
-                      <div className="bg-blue-50/50 rounded-2xl p-3">
+                      <div className="bg-slate-50 rounded-2xl p-3">
                         <p className="text-slate-500">Horário</p>
                         <strong>{formatTime(match.matchDate)}</strong>
                       </div>
@@ -993,7 +1036,7 @@ export default function MatchesPage() {
             <div className="hidden lg:block overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="border-b border-blue-100 text-left text-sm text-slate-500">
+                  <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
                     <th className="py-4 pr-4">
                       Jogo
                     </th>
@@ -1024,10 +1067,10 @@ export default function MatchesPage() {
                   {filteredMatches.map((match) => (
                     <tr
                       key={match.id}
-                      className="border-b border-slate-100 hover:bg-blue-50/40 transition"
+                      className="border-b border-slate-100 hover:bg-slate-50 transition"
                     >
                       <td className="py-5 pr-4">
-                        <div className="font-black text-slate-900">
+                        <div className="font-black text-[var(--cdb-dark)]">
                           {match.homeTeam} x{' '}
                           {match.awayTeam}
                         </div>
