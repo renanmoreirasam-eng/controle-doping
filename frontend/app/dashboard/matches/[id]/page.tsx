@@ -113,6 +113,33 @@ type OperationalLog = {
 };
 
 
+type KitInventoryItem = {
+  id: string;
+  number: string;
+  status: 'DISPONIVEL' | 'COM_DCO' | 'VINCULADO_JOGO' | 'UTILIZADO' | 'CANCELADO';
+};
+
+type MatchKitItem = {
+  id: string;
+  matchId: string;
+  kitId: string;
+  officialId: string;
+  createdAt: string;
+  usedAt?: string | null;
+  kit: {
+    id: string;
+    number: string;
+    status: string;
+  };
+  official?: {
+    user?: {
+      name: string;
+      email: string;
+    };
+  };
+};
+
+
 function createEmptySubstitutionRows(): SubstitutionFormRow[] {
   return Array.from({ length: 5 }, () => ({
     playerOutNumber: '',
@@ -147,6 +174,14 @@ export default function MatchDetailsPage() {
   const [substitutions, setSubstitutions] = useState<Substitution[]>([]);
   const [roomInspections, setRoomInspections] = useState<RoomInspection[]>([]);
   const [operationalLogs, setOperationalLogs] = useState<OperationalLog[]>([]);
+  const [myKits, setMyKits] = useState<KitInventoryItem[]>([]);
+  const [matchKits, setMatchKits] = useState<MatchKitItem[]>([]);
+  const linkedKitIds = matchKits.map((item) => item.kitId);
+  const availableKitsForMatch = myKits.filter(
+    (kit) => kit.status === 'COM_DCO' && !linkedKitIds.includes(kit.id),
+  );
+  const [selectedKitIds, setSelectedKitIds] = useState<string[]>([]);
+  const [savingKits, setSavingKits] = useState(false);
 
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
@@ -209,6 +244,8 @@ export default function MatchDetailsPage() {
       loadSubstitutions();
       loadRoomInspections();
       loadOperationalLogs();
+      loadMyKits();
+      loadMatchKits();
     }
   }, [matchId]);
 
@@ -264,6 +301,8 @@ export default function MatchDetailsPage() {
     match?.status === 'CONTROL_DONE';
 
   const hasDrawDone = draws.length > 0;
+  const hasMatchKits = matchKits.length > 0;
+  const canManageMatchKits = !!match && !isControlDone && isMatchInProgress && hasDrawDone;
 
   const savedDrawPlayers = draws.flatMap((draw) => draw.players);
 
@@ -273,17 +312,25 @@ export default function MatchDetailsPage() {
     !isCheckedIn &&
     isScaleAccepted;
 
+  const canDoRoomInspection =
+    !!match &&
+    !isControlDone &&
+    isCheckedIn &&
+    !hasRoomInspection;
+
   const canStartMatch =
     !!match &&
     !isControlDone &&
     isCheckedIn &&
+    hasRoomInspection &&
     match.status !== 'IN_PROGRESS';
 
   const canFinishControl =
     !!match &&
     !isControlDone &&
     isMatchInProgress &&
-    hasDrawDone;
+    hasDrawDone &&
+    hasMatchKits;
 
   const canShowOperationalSections =
     isMatchInProgress || hasDrawDone || isControlDone;
@@ -354,6 +401,30 @@ export default function MatchDetailsPage() {
     setOperationalLogs(response.data);
   }
 
+  async function loadMyKits() {
+    try {
+      const response = await api.get('/inventory/kits/my');
+      setMyKits(response.data || []);
+    } catch (error) {
+      console.warn('Não foi possível carregar os kits do DCO.', error);
+      setMyKits([]);
+    }
+  }
+
+  async function loadMatchKits() {
+    try {
+      const response = await api.get(`/inventory/matches/${matchId}/kits`);
+      const linkedKits = response.data || [];
+
+      setMatchKits(linkedKits);
+      setSelectedKitIds([]);
+    } catch (error) {
+      console.warn('Não foi possível carregar os kits utilizados no jogo.', error);
+      setMatchKits([]);
+      setSelectedKitIds([]);
+    }
+  }
+
   function getStatusLabel(status: string) {
     if (status === 'SCHEDULED') return 'Agendado';
     if (status === 'SCALE_ACCEPTED') return 'Escala aceita';
@@ -407,8 +478,86 @@ export default function MatchDetailsPage() {
     });
   }
 
+  function toggleKitSelection(kitId: string) {
+    if (isControlDone) return;
+
+    setSelectedKitIds((current) =>
+      current.includes(kitId)
+        ? current.filter((id) => id !== kitId)
+        : [...current, kitId],
+    );
+  }
+
+  async function handleSaveMatchKits() {
+    if (isControlDone) return;
+
+    if (selectedKitIds.length === 0) {
+      alert('Selecione pelo menos um kit utilizado no controle.');
+      return;
+    }
+
+    const validAvailableKitIds = availableKitsForMatch.map((kit) => kit.id);
+    const invalidSelectedKitIds = selectedKitIds.filter(
+      (kitId) => !validAvailableKitIds.includes(kitId),
+    );
+
+    if (invalidSelectedKitIds.length > 0) {
+      alert(
+        'A seleção possui kit que já foi utilizado ou não está mais disponível. Atualize a página e selecione novamente.',
+      );
+      await loadMyKits();
+      await loadMatchKits();
+      return;
+    }
+
+    try {
+      setSavingKits(true);
+
+      await api.post(`/inventory/matches/${matchId}/kits`, {
+        kitIds: selectedKitIds,
+      });
+
+      await loadMyKits();
+      await loadMatchKits();
+
+      alert('Kits utilizados registrados com sucesso!');
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          error.message ||
+          'Erro ao registrar kits utilizados.',
+      );
+    } finally {
+      setSavingKits(false);
+    }
+  }
+
+  async function handleRemoveMatchKit(kitId: string) {
+    if (isControlDone) return;
+
+    if (!confirm('Deseja remover este registro de kit utilizado da partida?')) return;
+
+    try {
+      await api.delete(`/inventory/matches/${matchId}/kits/${kitId}`);
+
+      await loadMyKits();
+      await loadMatchKits();
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          error.message ||
+          'Erro ao remover kit utilizado da partida.',
+      );
+    }
+  }
+
   async function updateMatchStatus(status: string) {
     try {
+      if (status === 'CONTROL_DONE' && matchKits.length === 0) {
+        alert('Antes de finalizar o controle, registre pelo menos um kit utilizado na partida.');
+        return;
+      }
+
       let location:
         | {
             latitude: number;
@@ -428,6 +577,8 @@ export default function MatchDetailsPage() {
 
       await loadMatch();
       await loadOperationalLogs();
+      await loadMyKits();
+      await loadMatchKits();
 
       alert('Status do jogo atualizado com sucesso!');
     } catch (error: any) {
@@ -980,6 +1131,53 @@ function formatTimeOnly(date: string) {
 
                 <div
                   className={`rounded-2xl border p-4 ${
+                    hasRoomInspection
+                      ? 'bg-green-50 border-green-200'
+                      : canDoRoomInspection
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        2. Inspeção da sala
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Realize o checklist da sala antes de marcar o jogo em andamento.
+                      </p>
+                    </div>
+
+                    {hasRoomInspection ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Feita
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {canDoRoomInspection && (
+                    <Link
+                      href={`/dashboard/matches/${matchId}/room-inspection`}
+                      className="mt-4 block w-full rounded-2xl bg-[var(--cdb-blue)] py-3 text-center font-semibold text-white transition hover:brightness-95"
+                    >
+                      Realizar inspeção da sala
+                    </Link>
+                  )}
+
+                  {!isCheckedIn && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando check-in no estádio para liberar a inspeção da sala.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
                     isMatchInProgress
                       ? 'bg-green-50 border-green-200'
                       : canStartMatch
@@ -990,7 +1188,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        2. Jogo em andamento
+                        3. Jogo em andamento
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1023,6 +1221,12 @@ function formatTimeOnly(date: string) {
                         : 'Aguardando confirmação da escala pelos oficiais.'}
                     </p>
                   )}
+
+                  {isCheckedIn && !hasRoomInspection && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando inspeção da sala para liberar o jogo em andamento.
+                    </p>
+                  )}
                 </div>
 
                 <div
@@ -1037,7 +1241,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        3. Sorteio realizado
+                        4. Sorteio realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1073,6 +1277,124 @@ function formatTimeOnly(date: string) {
 
                 <div
                   className={`rounded-2xl border p-4 ${
+                    hasMatchKits
+                      ? 'bg-green-50 border-green-200'
+                      : canManageMatchKits
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        5. Kits utilizados no controle
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Registre os kits utilizados nesta partida. Ao salvar, eles sairão automaticamente da responsabilidade do DCO e ficarão marcados como utilizados.
+                      </p>
+                    </div>
+
+                    {hasMatchKits ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        {matchKits.length} utilizado(s)
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {matchKits.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {matchKits.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div>
+                            <p className="text-sm font-black text-slate-900">
+                              Kit {item.kit.number}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {item.official?.user?.name
+                                ? `Registrado por ${item.official.user.name}`
+                                : 'Kit utilizado nesta partida'}
+                            </p>
+                          </div>
+
+                          {!isControlDone && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMatchKit(item.kitId)}
+                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
+                            >
+                              Remover
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {canManageMatchKits && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                        Meus kits disponíveis
+                      </p>
+
+                      {availableKitsForMatch.length === 0 ? (
+                        <p className="mt-3 text-sm text-slate-500">
+                          Nenhum kit disponível para o seu usuário. Solicite o repasse ao administrador.
+                        </p>
+                      ) : (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {availableKitsForMatch.map((kit) => {
+                            const checked = selectedKitIds.includes(kit.id);
+
+                            return (
+                              <label
+                                key={kit.id}
+                                className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition ${
+                                  checked
+                                    ? 'border-[var(--cdb-blue)] bg-blue-50 text-[var(--cdb-blue)]'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleKitSelection(kit.id)}
+                                  className="h-4 w-4 accent-[var(--cdb-blue)]"
+                                />
+                                Kit {kit.number}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleSaveMatchKits}
+                        disabled={savingKits || selectedKitIds.length === 0}
+                        className="mt-4 w-full rounded-2xl bg-[var(--cdb-blue)] py-3 font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingKits ? 'Salvando kits...' : 'Registrar kits utilizados'}
+                      </button>
+                    </div>
+                  )}
+
+                  {!canManageMatchKits && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando jogo em andamento e sorteio realizado para liberar o registro de kits utilizados.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
                     isControlDone
                       ? 'bg-green-50 border-green-200'
                       : canFinishControl
@@ -1083,7 +1405,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        4. Controle realizado
+                        6. Controle realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1111,7 +1433,7 @@ function formatTimeOnly(date: string) {
 
                   {!canFinishControl && !isControlDone && (
                     <p className="mt-4 text-xs text-slate-500">
-                      Aguardando jogo em andamento e sorteio realizado.
+                      Aguardando jogo em andamento, sorteio realizado e kits utilizados registrados.
                     </p>
                   )}
                 </div>
@@ -1125,7 +1447,7 @@ function formatTimeOnly(date: string) {
               </div>
             </details>
 
-          <div className="xl:col-span-2 space-y-4 lg:space-y-6">
+          <div className="xl:col-span-3 space-y-4 lg:space-y-6">
             <details open className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
                 <div>
@@ -1222,6 +1544,122 @@ function formatTimeOnly(date: string) {
       </span>
     </div>
 
+    <div className={`rounded-3xl border p-5 md:col-span-2 ${
+      hasRoomInspection
+        ? 'border-green-200 bg-green-50'
+        : 'border-slate-200 bg-slate-50'
+    }`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-slate-500 text-sm">
+            Inspeção da sala
+          </p>
+
+          <strong className={`text-lg ${
+            hasRoomInspection ? 'text-green-800' : 'text-slate-800'
+          }`}>
+            {hasRoomInspection ? 'Checklist realizado' : 'Checklist ainda pendente'}
+          </strong>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {hasRoomInspection
+              ? 'A inspeção da sala foi registrada para esta partida.'
+              : 'A inspeção será liberada no status operacional após o check-in.'}
+          </p>
+        </div>
+
+        {hasRoomInspection && (
+          <Link
+            href={`/dashboard/matches/${matchId}/room-inspection`}
+            className="inline-flex w-fit items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+          >
+            Visualizar inspeção
+          </Link>
+        )}
+      </div>
+    </div>
+
+    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-slate-500 text-sm">
+            Oficiais escalados
+          </p>
+
+          <strong className="text-lg">
+            Equipe responsável pela operação
+          </strong>
+        </div>
+
+        <span className="bg-slate-100 px-3 py-1 rounded-2xl text-xs font-semibold text-slate-700 w-fit">
+          {scales.length} oficiais
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {scales.map((scale) => (
+          <div
+            key={scale.id}
+            className="border border-slate-200 rounded-2xl p-4 bg-white"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xl">
+                  {scale.role === 'DCO' ? '🧑' : '👤'}
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                    {scale.role === 'DCO' ? 'DCO' : 'Assistente'}
+                  </p>
+
+                  <h3 className="mt-1 font-black text-slate-900">
+                    {scale.official.user.name}
+                  </h3>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    {scale.official.user.email}
+                  </p>
+                </div>
+              </div>
+
+              <span
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
+                  scale.confirmed === true
+                    ? 'bg-green-100 text-green-700'
+                    : scale.confirmed === false
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                }`}
+              >
+                {scale.confirmed === true
+                  ? 'Confirmado'
+                  : scale.confirmed === false
+                    ? 'Recusado'
+                    : 'Pendente'}
+              </span>
+            </div>
+          </div>
+        ))}
+
+        {scales.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center md:col-span-2">
+            <div className="mb-3 text-4xl">
+              👥
+            </div>
+
+            <h3 className="font-bold text-slate-900">
+              Nenhum oficial escalado
+            </h3>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Este jogo ainda não possui oficiais vinculados.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+
     {hasDrawDone && (
       <div className="border border-green-200 rounded-3xl p-5 bg-green-50 md:col-span-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
@@ -1301,95 +1739,7 @@ function formatTimeOnly(date: string) {
                 </p>
               </div>
             )}
-            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                <div>
-                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                    Oficiais escalados
-                  </h2>
-
-                  <p className="text-sm text-slate-500 mt-1">
-                    Equipe responsável pela operação deste jogo.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-
-              <span className="bg-slate-100 px-3 py-1 rounded-2xl text-xs font-semibold text-slate-700">
-                {scales.length} oficiais
-              </span>
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                    ⌄
-                  </span>
-                </div>
-              </summary>
-
-              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    {scales.map((scale) => (
-      <div
-        key={scale.id}
-        className="border border-slate-200 rounded-3xl p-5 bg-slate-50"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-2xl">
-              {scale.role === 'DCO' ? '🧑' : '👤'}
-            </div>
-
-            <div>
-              <p className="text-sm text-slate-500 font-medium">
-                {scale.role === 'DCO' ? 'DCO' : 'Assistente'}
-              </p>
-
-              <h3 className="text-xl font-black mt-1">
-                {scale.official.user.name}
-              </h3>
-
-              <p className="text-slate-500 text-sm mt-1">
-                {scale.official.user.email}
-              </p>
-            </div>
-          </div>
-
-          <span
-            className={`px-3 py-1 rounded-full text-sm font-semibold ${
-              scale.confirmed === true
-                ? 'bg-green-100 text-green-700'
-                : scale.confirmed === false
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-yellow-100 text-yellow-700'
-            }`}
-          >
-            {scale.confirmed === true
-              ? 'Confirmado'
-              : scale.confirmed === false
-                ? 'Recusado'
-                : 'Pendente'}
-          </span>
-        </div>
-      </div>
-    ))}
-
-    {scales.length === 0 && (
-      <div className="border border-dashed border-slate-300 rounded-3xl p-10 text-center md:col-span-2">
-        <div className="text-6xl mb-4">
-          👥
-        </div>
-
-        <h3 className="text-xl font-bold">
-          Nenhum oficial escalado
-        </h3>
-
-        <p className="text-slate-500 mt-2">
-          Este jogo ainda não possui oficiais vinculados.
-        </p>
-      </div>
-    )}
-  </div>
-              </div>
-            </details>
-            {canShowOperationalSections && (
+                        {canShowOperationalSections && (
               <>
             
             <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -1772,98 +2122,7 @@ function formatTimeOnly(date: string) {
             )}
           </div>
 
-          <div className="space-y-4 lg:space-y-6">
-            
-            {canShowOperationalSections && (
-              <>
-            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                <div>
-                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                    Cronômetro
-                  </h2>
-
-                  <p className="text-sm text-slate-500 mt-1">
-                    Apoio operacional durante a partida.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                    ⌄
-                  </span>
-                </div>
-              </summary>
-
-              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
-  <p className="text-slate-500 mb-6">
-    Apoio operacional durante a partida.
-  </p>
-
-  <div className="text-6xl font-black mb-8 tracking-tight">
-    {formatTime()}
-  </div>
-
-  <div className="flex gap-3">
-    <button
-      disabled={isControlDone}
-      onClick={() => setRunning(true)}
-      className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white py-4 rounded-2xl font-semibold transition"
-    >
-      Iniciar
-    </button>
-
-    <button
-      disabled={isControlDone}
-      onClick={() => setRunning(false)}
-      className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white py-4 rounded-2xl font-semibold transition"
-    >
-      Parar
-    </button>
-  </div>
-              </div>
-            </details>
-
-<details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                <div>
-                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                    Inspeção da sala
-                  </h2>
-
-                  <p className="text-sm text-slate-500 mt-1">
-                    Checklist da sala de controle de doping.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                    ⌄
-                  </span>
-                </div>
-              </summary>
-
-              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
-          <Link
-  href={`/dashboard/matches/${matchId}/room-inspection`}
-  className={`block text-center py-4 rounded-2xl font-semibold transition ${
-    hasRoomInspection
-      ? 'bg-green-600 text-white hover:bg-green-700'
-      : 'bg-[var(--cdb-blue)] text-white hover:brightness-95'
-  }`}
->
-  {hasRoomInspection
-    ? 'Visualizar checklist da sala'
-    : 'Abrir inspeção da sala'}
-</Link>
-              </div>
-            </details>
-              </>
-            )}
-          </div>
-        </section>
+                  </section>
       </div>
     </main>
   );

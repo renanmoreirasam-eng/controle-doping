@@ -110,6 +110,13 @@ function ScalesPageContent() {
     );
   }
 
+  function canRespondScale(scale?: Scale) {
+    if (!scale) return false;
+    if (!canConfirmScale(scale)) return false;
+
+    return scale.confirmed === null;
+  }
+
   const groupedScales = useMemo(() => {
     const map = new Map<string, ScaleGroup>();
 
@@ -326,13 +333,49 @@ function ScalesPageContent() {
     }
   }
 
-  async function confirmScale(id: string) {
-    await api.patch(`/match-officials/${id}/confirm`);
+  async function confirmScale(scale?: Scale) {
+    if (!scale) return;
+
+    if (scale.confirmed !== null) {
+      alert("Esta escala já possui uma resposta registrada.");
+      return;
+    }
+
+    const officialName = scale.official?.user?.name || "este oficial";
+    const roleLabel = scale.role === "DCO" ? "DCO" : "Assistente";
+
+    if (
+      !confirm(
+        `Deseja confirmar a escala como ${roleLabel} para ${officialName}?`,
+      )
+    ) {
+      return;
+    }
+
+    await api.patch(`/match-officials/${scale.id}/confirm`);
     await loadScales();
   }
 
-  async function refuseScale(id: string) {
-    await api.patch(`/match-officials/${id}/refuse`);
+  async function refuseScale(scale?: Scale) {
+    if (!scale) return;
+
+    if (scale.confirmed !== null) {
+      alert("Esta escala já possui uma resposta registrada.");
+      return;
+    }
+
+    const officialName = scale.official?.user?.name || "este oficial";
+    const roleLabel = scale.role === "DCO" ? "DCO" : "Assistente";
+
+    if (
+      !confirm(
+        `Deseja recusar a escala como ${roleLabel} para ${officialName}?`,
+      )
+    ) {
+      return;
+    }
+
+    await api.patch(`/match-officials/${scale.id}/refuse`);
     await loadScales();
   }
 
@@ -757,15 +800,15 @@ function ScalesPageContent() {
                     </div>
                   </div>
 
-                  {(canConfirmScale(group.dco) ||
-                    canConfirmScale(group.assistant)) && (
+                  {(canRespondScale(group.dco) ||
+                    canRespondScale(group.assistant)) && (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
                         Minha confirmação
                       </p>
 
                       <div className="space-y-3">
-                        {canConfirmScale(group.dco) && (
+                        {canRespondScale(group.dco) && (
                           <div>
                             <p className="mb-2 text-sm font-bold text-slate-700">
                               DCO
@@ -773,14 +816,14 @@ function ScalesPageContent() {
 
                             <div className="grid grid-cols-2 gap-2">
                               <button
-                                onClick={() => confirmScale(group.dco!.id)}
+                                onClick={() => confirmScale(group.dco)}
                                 className="rounded-xl bg-green-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-green-700"
                               >
                                 Confirmar
                               </button>
 
                               <button
-                                onClick={() => refuseScale(group.dco!.id)}
+                                onClick={() => refuseScale(group.dco)}
                                 className="rounded-xl bg-yellow-500 px-3 py-3 text-sm font-bold text-white transition hover:bg-yellow-600"
                               >
                                 Recusar
@@ -789,7 +832,7 @@ function ScalesPageContent() {
                           </div>
                         )}
 
-                        {canConfirmScale(group.assistant) && (
+                        {canRespondScale(group.assistant) && (
                           <div>
                             <p className="mb-2 text-sm font-bold text-slate-700">
                               Assistente
@@ -798,7 +841,7 @@ function ScalesPageContent() {
                             <div className="grid grid-cols-2 gap-2">
                               <button
                                 onClick={() =>
-                                  confirmScale(group.assistant!.id)
+                                  confirmScale(group.assistant)
                                 }
                                 className="rounded-xl bg-green-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-green-700"
                               >
@@ -806,7 +849,7 @@ function ScalesPageContent() {
                               </button>
 
                               <button
-                                onClick={() => refuseScale(group.assistant!.id)}
+                                onClick={() => refuseScale(group.assistant)}
                                 className="rounded-xl bg-yellow-500 px-3 py-3 text-sm font-bold text-white transition hover:bg-yellow-600"
                               >
                                 Recusar
@@ -953,19 +996,19 @@ function ScalesPageContent() {
 
                       <td className="py-5 pr-4">
                         <div className="flex min-w-[220px] flex-col gap-3">
-                          {(canConfirmScale(group.dco) ||
-                            canConfirmScale(group.assistant)) && (
+                          {(canRespondScale(group.dco) ||
+                            canRespondScale(group.assistant)) && (
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                               <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
                                 Minha confirmação
                               </p>
 
                               <div className="flex flex-col gap-2">
-                                {canConfirmScale(group.dco) && (
+                                {canRespondScale(group.dco) && (
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() =>
-                                        confirmScale(group.dco!.id)
+                                        confirmScale(group.dco)
                                       }
                                       className="flex-1 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700"
                                     >
@@ -973,7 +1016,7 @@ function ScalesPageContent() {
                                     </button>
 
                                     <button
-                                      onClick={() => refuseScale(group.dco!.id)}
+                                      onClick={() => refuseScale(group.dco)}
                                       className="flex-1 rounded-xl bg-yellow-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-yellow-600"
                                     >
                                       Recusar
@@ -981,11 +1024,11 @@ function ScalesPageContent() {
                                   </div>
                                 )}
 
-                                {canConfirmScale(group.assistant) && (
+                                {canRespondScale(group.assistant) && (
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() =>
-                                        confirmScale(group.assistant!.id)
+                                        confirmScale(group.assistant)
                                       }
                                       className="flex-1 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700"
                                     >
@@ -994,7 +1037,7 @@ function ScalesPageContent() {
 
                                     <button
                                       onClick={() =>
-                                        refuseScale(group.assistant!.id)
+                                        refuseScale(group.assistant)
                                       }
                                       className="flex-1 rounded-xl bg-yellow-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-yellow-600"
                                     >

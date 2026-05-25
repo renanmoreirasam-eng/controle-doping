@@ -1,71 +1,108 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Query,
   Req,
   UseGuards,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import { AuthGuard } from '@nestjs/passport';
-import { InventoryService } from './inventory.service';
+import { AuthGuard } from "@nestjs/passport";
+import { InventoryService } from "./inventory.service";
 
-@Controller('inventory')
-@UseGuards(AuthGuard('jwt'))
+@Controller("inventory")
+@UseGuards(AuthGuard("jwt"))
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
-  @Get('summary')
-  getSummary() {
-    return this.inventoryService.getSummary();
+  @Get("summary")
+  getSummary(@Req() req: any) {
+    return this.inventoryService.getSummary(req.user);
   }
 
-  @Get('kits')
+  @Get("kits")
   listKits(
-    @Query('status') status?: string,
-    @Query('officialId') officialId?: string,
-    @Query('number') number?: string,
+    @Req() req: any,
+    @Query("status") status?: string,
+    @Query("officialId") officialId?: string,
+    @Query("number") number?: string,
   ) {
-    return this.inventoryService.listKits({
+    return this.inventoryService.listKits(req.user, {
       status,
       officialId,
       number,
     });
   }
 
-  @Get('kits/my')
+  @Get("kits/my")
   listMyKits(@Req() req: any) {
     return this.inventoryService.listMyKits(req.user);
   }
 
-  @Get('kits/by-official')
-  listKitsByOfficial(@Query('officialId') officialId: string) {
-    return this.inventoryService.listKitsByOfficial(officialId);
+  @Get("kits/by-official")
+  listKitsByOfficial(@Req() req: any, @Query("officialId") officialId: string) {
+    return this.inventoryService.listKitsByOfficial(req.user, officialId);
   }
 
-  @Get('movements')
-  listMovements(@Query('kitId') kitId?: string) {
-    return this.inventoryService.listMovements(kitId);
+  @Get("movements")
+  listMovements(@Req() req: any, @Query("kitId") kitId?: string) {
+    return this.inventoryService.listMovements(req.user, kitId);
   }
 
-  @Post('entries')
+  @Post("entries")
   createEntry(@Req() req: any, @Body() body: any) {
     return this.inventoryService.createEntry(req.user, {
       quantity: Number(body.quantity),
-      initialNumber: String(body.initialNumber || '').trim(),
-      finalNumber: String(body.finalNumber || '').trim(),
+      initialNumber: String(body.initialNumber || "").trim(),
+      finalNumber: String(body.finalNumber || "").trim(),
       notes: body.notes,
     });
   }
 
-  @Post('transfers')
+  @Post("transfers")
   transferToDco(@Req() req: any, @Body() body: any) {
     return this.inventoryService.transferToDco(req.user, {
       officialId: body.officialId,
-      initialNumber: String(body.initialNumber || '').trim(),
-      finalNumber: String(body.finalNumber || '').trim(),
+      initialNumber: body.initialNumber
+        ? String(body.initialNumber || "").trim()
+        : undefined,
+      finalNumber: body.finalNumber
+        ? String(body.finalNumber || "").trim()
+        : undefined,
+      kitNumbers: Array.isArray(body.kitNumbers)
+        ? body.kitNumbers
+            .map((number: unknown) => String(number || "").trim())
+            .filter(Boolean)
+        : undefined,
       notes: body.notes,
     });
+  }
+
+  @Get("matches/:matchId/kits")
+  listMatchKits(@Param("matchId") matchId: string) {
+    return this.inventoryService.listMatchKits(matchId);
+  }
+
+  @Post("matches/:matchId/kits")
+  attachKitsToMatch(
+    @Req() req: any,
+    @Param("matchId") matchId: string,
+    @Body() body: any,
+  ) {
+    return this.inventoryService.attachKitsToMatch(req.user, matchId, {
+      kitIds: body.kitIds,
+    });
+  }
+
+  @Delete("matches/:matchId/kits/:kitId")
+  removeKitFromMatch(
+    @Req() req: any,
+    @Param("matchId") matchId: string,
+    @Param("kitId") kitId: string,
+  ) {
+    return this.inventoryService.removeKitFromMatch(req.user, matchId, kitId);
   }
 }

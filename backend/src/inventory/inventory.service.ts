@@ -3,15 +3,15 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from "../prisma/prisma.service";
 
 type AuthUser = {
   id: string;
   name?: string;
   email?: string;
-  role: 'ADMIN' | 'COORDINATOR' | 'OFFICIAL';
+  role: "ADMIN" | "COORDINATOR" | "OFFICIAL";
 };
 
 type CreateKitEntryDto = {
@@ -23,8 +23,9 @@ type CreateKitEntryDto = {
 
 type TransferKitsDto = {
   officialId: string;
-  initialNumber: string;
-  finalNumber: string;
+  initialNumber?: string;
+  finalNumber?: string;
+  kitNumbers?: string[];
   notes?: string;
 };
 
@@ -33,9 +34,9 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   private ensureAdmin(user: AuthUser) {
-    if (user.role !== 'ADMIN') {
+    if (user.role !== "ADMIN") {
       throw new ForbiddenException(
-        'Apenas administradores podem realizar esta ação.',
+        "Apenas administradores podem realizar esta ação.",
       );
     }
   }
@@ -46,13 +47,13 @@ export class InventoryService {
 
     if (!Number.isInteger(start) || !Number.isInteger(end)) {
       throw new BadRequestException(
-        'Número inicial e final devem ser numéricos.',
+        "Número inicial e final devem ser numéricos.",
       );
     }
 
     if (end < start) {
       throw new BadRequestException(
-        'Número final deve ser maior ou igual ao inicial.',
+        "Número final deve ser maior ou igual ao inicial.",
       );
     }
 
@@ -60,13 +61,78 @@ export class InventoryService {
     const numbers: string[] = [];
 
     for (let current = start; current <= end; current += 1) {
-      numbers.push(String(current).padStart(paddingSize, '0'));
+      numbers.push(String(current).padStart(paddingSize, "0"));
     }
 
     return numbers;
   }
 
-  async getSummary() {
+  async getSummary(user: AuthUser) {
+    if (user.role !== "ADMIN") {
+      const official = await this.prisma.official.findUnique({
+        where: {
+          userId: user.id,
+        },
+        select: {
+          id: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+          kits: {
+            where: {
+              status: {
+                in: ["COM_DCO", "UTILIZADO"],
+              },
+            },
+            select: {
+              id: true,
+              number: true,
+              status: true,
+            },
+            orderBy: {
+              number: "asc",
+            },
+          },
+        },
+      });
+
+      if (!official) {
+        return {
+          total: 0,
+          disponivel: 0,
+          comDco: 0,
+          vinculadoJogo: 0,
+          utilizado: 0,
+          cancelado: 0,
+          byDco: [],
+        };
+      }
+
+      const total = official.kits.length;
+
+      return {
+        total,
+        disponivel: 0,
+        comDco: official.kits.filter((kit) => kit.status === "COM_DCO").length,
+        vinculadoJogo: 0,
+        utilizado: official.kits.filter((kit) => kit.status === "UTILIZADO")
+          .length,
+        cancelado: 0,
+        byDco: [
+          {
+            officialId: official.id,
+            name: official.user.name,
+            email: official.user.email,
+            total,
+            kits: official.kits,
+          },
+        ],
+      };
+    }
+
     const [
       total,
       disponivel,
@@ -77,18 +143,16 @@ export class InventoryService {
       byDco,
     ] = await Promise.all([
       this.prisma.kit.count(),
-      this.prisma.kit.count({ where: { status: 'DISPONIVEL' } }),
-      this.prisma.kit.count({ where: { status: 'COM_DCO' } }),
-      this.prisma.kit.count({ where: { status: 'VINCULADO_JOGO' } }),
-      this.prisma.kit.count({ where: { status: 'UTILIZADO' } }),
-      this.prisma.kit.count({ where: { status: 'CANCELADO' } }),
+      this.prisma.kit.count({ where: { status: "DISPONIVEL" } }),
+      this.prisma.kit.count({ where: { status: "COM_DCO" } }),
+      this.prisma.kit.count({ where: { status: "VINCULADO_JOGO" } }),
+      this.prisma.kit.count({ where: { status: "UTILIZADO" } }),
+      this.prisma.kit.count({ where: { status: "CANCELADO" } }),
       this.prisma.official.findMany({
         where: {
           kits: {
             some: {
-              status: {
-                in: ['COM_DCO', 'VINCULADO_JOGO'],
-              },
+              status: "COM_DCO",
             },
           },
         },
@@ -102,9 +166,7 @@ export class InventoryService {
           },
           kits: {
             where: {
-              status: {
-                in: ['COM_DCO', 'VINCULADO_JOGO'],
-              },
+              status: "COM_DCO",
             },
             select: {
               id: true,
@@ -112,13 +174,13 @@ export class InventoryService {
               status: true,
             },
             orderBy: {
-              number: 'asc',
+              number: "asc",
             },
           },
         },
         orderBy: {
           user: {
-            name: 'asc',
+            name: "asc",
           },
         },
       }),
@@ -141,11 +203,18 @@ export class InventoryService {
     };
   }
 
-  async listKits(query: {
-    status?: string;
-    officialId?: string;
-    number?: string;
-  }) {
+  async listKits(
+    user: AuthUser,
+    query: {
+      status?: string;
+      officialId?: string;
+      number?: string;
+    },
+  ) {
+    if (user.role !== "ADMIN") {
+      return this.listMyKits(user);
+    }
+
     return this.prisma.kit.findMany({
       where: {
         ...(query.status ? { status: query.status as any } : {}),
@@ -154,7 +223,7 @@ export class InventoryService {
           ? {
               number: {
                 contains: query.number,
-                mode: 'insensitive',
+                mode: "insensitive",
               },
             }
           : {}),
@@ -184,12 +253,12 @@ export class InventoryService {
             },
           },
           orderBy: {
-            createdAt: 'desc',
+            createdAt: "desc",
           },
         },
       },
       orderBy: {
-        number: 'asc',
+        number: "asc",
       },
     });
   }
@@ -201,7 +270,7 @@ export class InventoryService {
     const numbers = this.generateNumbers(data.initialNumber, data.finalNumber);
 
     if (!Number.isInteger(quantity) || quantity <= 0) {
-      throw new BadRequestException('Quantidade deve ser maior que zero.');
+      throw new BadRequestException("Quantidade deve ser maior que zero.");
     }
 
     if (numbers.length !== quantity) {
@@ -225,7 +294,7 @@ export class InventoryService {
       throw new BadRequestException(
         `Já existem kits cadastrados nesta sequência: ${existingKits
           .map((kit) => kit.number)
-          .join(', ')}`,
+          .join(", ")}`,
       );
     }
 
@@ -233,7 +302,7 @@ export class InventoryService {
       await tx.kit.createMany({
         data: numbers.map((number) => ({
           number,
-          status: 'DISPONIVEL',
+          status: "DISPONIVEL",
         })),
       });
 
@@ -252,7 +321,7 @@ export class InventoryService {
       await tx.kitMovement.createMany({
         data: createdKits.map((kit) => ({
           kitId: kit.id,
-          type: 'ENTRADA_ESTOQUE',
+          type: "ENTRADA_ESTOQUE",
           userId: user.id,
           userName: user.name,
           userEmail: user.email,
@@ -263,7 +332,7 @@ export class InventoryService {
       });
 
       return {
-        message: 'Entrada de kits cadastrada com sucesso.',
+        message: "Entrada de kits cadastrada com sucesso.",
         quantity: createdKits.length,
         initialNumber: data.initialNumber,
         finalNumber: data.finalNumber,
@@ -275,7 +344,25 @@ export class InventoryService {
   async transferToDco(user: AuthUser, data: TransferKitsDto) {
     this.ensureAdmin(user);
 
-    const numbers = this.generateNumbers(data.initialNumber, data.finalNumber);
+    const numbers =
+      data.kitNumbers && data.kitNumbers.length > 0
+        ? Array.from(
+            new Set(
+              data.kitNumbers
+                .map((number) => String(number || "").trim())
+                .filter(Boolean),
+            ),
+          )
+        : this.generateNumbers(
+            String(data.initialNumber || ""),
+            String(data.finalNumber || ""),
+          );
+
+    if (numbers.length === 0) {
+      throw new BadRequestException(
+        "Selecione pelo menos um kit para repasse.",
+      );
+    }
 
     const official = await this.prisma.official.findUnique({
       where: {
@@ -292,12 +379,12 @@ export class InventoryService {
     });
 
     if (!official) {
-      throw new NotFoundException('DCO não encontrado.');
+      throw new NotFoundException("DCO não encontrado.");
     }
 
     if (!official.active) {
       throw new BadRequestException(
-        'Não é possível repassar kits para um DCO inativo.',
+        "Não é possível repassar kits para um DCO inativo.",
       );
     }
 
@@ -322,17 +409,17 @@ export class InventoryService {
       );
 
       throw new BadRequestException(
-        `Alguns kits não existem no estoque: ${missingNumbers.join(', ')}`,
+        `Alguns kits não existem no estoque: ${missingNumbers.join(", ")}`,
       );
     }
 
-    const unavailableKits = kits.filter((kit) => kit.status !== 'DISPONIVEL');
+    const unavailableKits = kits.filter((kit) => kit.status !== "DISPONIVEL");
 
     if (unavailableKits.length > 0) {
       throw new BadRequestException(
         `Alguns kits não estão disponíveis: ${unavailableKits
           .map((kit) => `${kit.number} (${kit.status})`)
-          .join(', ')}`,
+          .join(", ")}`,
       );
     }
 
@@ -344,7 +431,7 @@ export class InventoryService {
           },
         },
         data: {
-          status: 'COM_DCO',
+          status: "COM_DCO",
           currentOfficialId: data.officialId,
         },
       });
@@ -352,19 +439,19 @@ export class InventoryService {
       await tx.kitMovement.createMany({
         data: kits.map((kit) => ({
           kitId: kit.id,
-          type: 'REPASSE_DCO',
+          type: "REPASSE_DCO",
           toOfficialId: data.officialId,
           userId: user.id,
           userName: user.name,
           userEmail: user.email,
           notes:
             data.notes ||
-            `Repasse para DCO ${official.user.name}: ${data.initialNumber} até ${data.finalNumber}`,
+            `Repasse para DCO ${official.user.name}: ${numbers.join(", ")}`,
         })),
       });
 
       return {
-        message: 'Kits repassados para o DCO com sucesso.',
+        message: "Kits repassados para o DCO com sucesso.",
         official: {
           id: official.id,
           name: official.user.name,
@@ -399,16 +486,51 @@ export class InventoryService {
       where: {
         currentOfficialId: official.id,
         status: {
-          in: ['COM_DCO', 'VINCULADO_JOGO'],
+          in: ["COM_DCO", "UTILIZADO"],
+        },
+      },
+      include: {
+        matchKits: {
+          include: {
+            match: {
+              select: {
+                id: true,
+                homeTeam: true,
+                awayTeam: true,
+                matchDate: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
         },
       },
       orderBy: {
-        number: 'asc',
+        number: "asc",
       },
     });
   }
 
-  async listKitsByOfficial(officialId: string) {
+  async listKitsByOfficial(user: AuthUser, officialId: string) {
+    if (user.role !== "ADMIN") {
+      const official = await this.prisma.official.findUnique({
+        where: {
+          userId: user.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!official || official.id !== officialId) {
+        throw new ForbiddenException(
+          "Você só pode consultar kits associados ao seu próprio cadastro.",
+        );
+      }
+    }
+
     return this.prisma.kit.findMany({
       where: {
         currentOfficialId: officialId,
@@ -426,12 +548,77 @@ export class InventoryService {
         },
       },
       orderBy: {
-        number: 'asc',
+        number: "asc",
       },
     });
   }
 
-  async listMovements(kitId?: string) {
+  async listMovements(user: AuthUser, kitId?: string) {
+    if (user.role !== "ADMIN") {
+      const official = await this.prisma.official.findUnique({
+        where: {
+          userId: user.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!official) {
+        return [];
+      }
+
+      return this.prisma.kitMovement.findMany({
+        where: {
+          ...(kitId ? { kitId } : {}),
+          OR: [
+            { fromOfficialId: official.id },
+            { toOfficialId: official.id },
+            {
+              kit: {
+                currentOfficialId: official.id,
+              },
+            },
+          ],
+        },
+        include: {
+          kit: true,
+          fromOfficial: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          toOfficial: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          match: {
+            select: {
+              id: true,
+              homeTeam: true,
+              awayTeam: true,
+              matchDate: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    }
+
     return this.prisma.kitMovement.findMany({
       where: {
         ...(kitId ? { kitId } : {}),
@@ -469,8 +656,283 @@ export class InventoryService {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
+    });
+  }
+
+  async listMatchKits(matchId: string) {
+    return this.prisma.matchKit.findMany({
+      where: {
+        matchId,
+      },
+      include: {
+        kit: true,
+        official: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        match: {
+          select: {
+            id: true,
+            homeTeam: true,
+            awayTeam: true,
+            matchDate: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
+
+  async attachKitsToMatch(
+    user: AuthUser,
+    matchId: string,
+    data: {
+      kitIds: string[];
+    },
+  ) {
+    const kitIds = Array.isArray(data.kitIds) ? data.kitIds : [];
+
+    if (kitIds.length === 0) {
+      throw new BadRequestException("Selecione pelo menos um kit.");
+    }
+
+    const match = await this.prisma.match.findUnique({
+      where: {
+        id: matchId,
+      },
+      select: {
+        id: true,
+        homeTeam: true,
+        awayTeam: true,
+        status: true,
+      },
+    });
+
+    if (!match) {
+      throw new NotFoundException("Jogo não encontrado.");
+    }
+
+    if (match.status === "CONTROL_DONE") {
+      throw new BadRequestException(
+        "Não é possível registrar kits depois que o controle foi concluído.",
+      );
+    }
+
+    const official = await this.prisma.official.findUnique({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!official) {
+      throw new ForbiddenException(
+        "Somente oficiais vinculados podem registrar kits no jogo.",
+      );
+    }
+
+    const kits = await this.prisma.kit.findMany({
+      where: {
+        id: {
+          in: kitIds,
+        },
+      },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        currentOfficialId: true,
+        matchKits: {
+          select: {
+            matchId: true,
+          },
+        },
+      },
+    });
+
+    if (kits.length !== kitIds.length) {
+      throw new BadRequestException("Um ou mais kits não foram encontrados.");
+    }
+
+    const invalidOwnerKits = kits.filter(
+      (kit) => kit.currentOfficialId !== official.id,
+    );
+
+    if (invalidOwnerKits.length > 0) {
+      throw new BadRequestException(
+        `Você só pode associar kits sob sua responsabilidade. Kits inválidos: ${invalidOwnerKits
+          .map((kit) => kit.number)
+          .join(", ")}`,
+      );
+    }
+
+    const invalidStatusKits = kits.filter((kit) => kit.status !== "COM_DCO");
+
+    if (invalidStatusKits.length > 0) {
+      throw new BadRequestException(
+        `Alguns kits não estão disponíveis para uso: ${invalidStatusKits
+          .map((kit) => `${kit.number} (${kit.status})`)
+          .join(", ")}`,
+      );
+    }
+
+    const kitsLinkedToOtherMatch = kits.filter((kit) =>
+      kit.matchKits.some((matchKit) => matchKit.matchId !== matchId),
+    );
+
+    if (kitsLinkedToOtherMatch.length > 0) {
+      throw new BadRequestException(
+        `Alguns kits já foram utilizados em outro jogo: ${kitsLinkedToOtherMatch
+          .map((kit) => kit.number)
+          .join(", ")}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const usedAt = new Date();
+
+      await tx.matchKit.createMany({
+        data: kits.map((kit) => ({
+          matchId,
+          kitId: kit.id,
+          officialId: official.id,
+          usedAt,
+        })),
+        skipDuplicates: true,
+      });
+
+      await tx.kit.updateMany({
+        where: {
+          id: {
+            in: kits.map((kit) => kit.id),
+          },
+        },
+        data: {
+          status: "UTILIZADO",
+        },
+      });
+
+      await tx.kitMovement.createMany({
+        data: kits.map((kit) => ({
+          kitId: kit.id,
+          type: "UTILIZADO",
+          toOfficialId: official.id,
+          matchId,
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          notes: `Kit utilizado no controle do jogo ${match.homeTeam} x ${match.awayTeam}.`,
+        })),
+      });
+
+      return {
+        message: "Kits utilizados registrados com sucesso.",
+        quantity: kits.length,
+      };
+    });
+  }
+
+  async removeKitFromMatch(user: AuthUser, matchId: string, kitId: string) {
+    const official = await this.prisma.official.findUnique({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!official && user.role !== "ADMIN") {
+      throw new ForbiddenException(
+        "Somente oficiais vinculados ou administradores podem remover kits do jogo.",
+      );
+    }
+
+    const matchKit = await this.prisma.matchKit.findFirst({
+      where: {
+        matchId,
+        kitId,
+      },
+      include: {
+        kit: true,
+        match: {
+          select: {
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!matchKit) {
+      throw new NotFoundException("Kit não está vinculado a este jogo.");
+    }
+
+    if (user.role !== "ADMIN" && matchKit.officialId !== official?.id) {
+      throw new ForbiddenException(
+        "Você só pode remover kits vinculados por você.",
+      );
+    }
+
+    if (matchKit.match.status === "CONTROL_DONE") {
+      throw new BadRequestException(
+        "Não é possível remover kits depois que o controle foi concluído.",
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.matchKit.delete({
+        where: {
+          id: matchKit.id,
+        },
+      });
+
+      const otherLinks = await tx.matchKit.count({
+        where: {
+          kitId,
+        },
+      });
+
+      if (otherLinks === 0) {
+        await tx.kit.update({
+          where: {
+            id: kitId,
+          },
+          data: {
+            status: "COM_DCO",
+          },
+        });
+      }
+
+      await tx.kitMovement.create({
+        data: {
+          kitId,
+          type: "DEVOLUCAO_ESTOQUE",
+          fromOfficialId: matchKit.officialId,
+          matchId,
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          notes: "Registro de kit utilizado removido antes da finalização.",
+        },
+      });
+
+      return {
+        message: "Kit removido do jogo com sucesso.",
+      };
     });
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Sidebar } from "@/components/Sidebar";
+import Link from "next/link";
 
 type UserRole = "ADMIN" | "COORDINATOR" | "OFFICIAL";
 
@@ -78,7 +79,7 @@ type ModalState = {
   confirmText?: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3333";
 
 const statusLabel: Record<KitStatus, string> = {
   DISPONIVEL: "Disponível",
@@ -101,15 +102,21 @@ export default function InventoryPage() {
   const [officials, setOfficials] = useState<Official[]>([]);
   const [summary, setSummary] = useState<InventorySummary | null>(null);
   const [kits, setKits] = useState<Kit[]>([]);
+  const [availableKits, setAvailableKits] = useState<Kit[]>([]);
   const [myKits, setMyKits] = useState<Kit[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingEntry, setSavingEntry] = useState(false);
   const [savingTransfer, setSavingTransfer] = useState(false);
+  const [entryMode, setEntryMode] = useState<"batch" | "single">("batch");
+  const [transferMode, setTransferMode] = useState<
+    "selected" | "batch" | "single"
+  >("selected");
 
   const [entryForm, setEntryForm] = useState({
     quantity: "",
     initialNumber: "",
     finalNumber: "",
+    singleNumber: "",
     notes: "",
   });
 
@@ -117,14 +124,21 @@ export default function InventoryPage() {
     officialId: "",
     initialNumber: "",
     finalNumber: "",
+    singleNumber: "",
     notes: "",
   });
+  const [selectedTransferKitNumbers, setSelectedTransferKitNumbers] = useState<
+    string[]
+  >([]);
 
   const [filters, setFilters] = useState({
     status: "",
     officialId: "",
     number: "",
   });
+  const [myKitsView, setMyKitsView] = useState<"COM_DCO" | "UTILIZADO">(
+    "COM_DCO",
+  );
 
   const [modal, setModal] = useState<ModalState>({
     open: false,
@@ -134,7 +148,6 @@ export default function InventoryPage() {
   });
 
   const isAdmin = user?.role === "ADMIN";
-  const isOfficial = user?.role === "OFFICIAL";
 
   function closeModal() {
     setModal((current) => ({ ...current, open: false }));
@@ -194,9 +207,16 @@ export default function InventoryPage() {
     if (filters.number) params.set("number", filters.number);
 
     const queryString = params.toString();
-    const data = await apiFetch(`/inventory/kits${queryString ? `?${queryString}` : ""}`);
+    const data = await apiFetch(
+      `/inventory/kits${queryString ? `?${queryString}` : ""}`,
+    );
 
     setKits(data);
+  }
+
+  async function loadAvailableKits() {
+    const data = await apiFetch("/inventory/kits?status=DISPONIVEL");
+    setAvailableKits(data);
   }
 
   async function loadMyKits() {
@@ -217,9 +237,8 @@ export default function InventoryPage() {
 
       await Promise.all([
         loadSummary(),
-        currentUser.role === "ADMIN" || currentUser.role === "COORDINATOR"
-          ? loadKits()
-          : loadMyKits(),
+        currentUser.role === "ADMIN" ? loadKits() : loadMyKits(),
+        currentUser.role === "ADMIN" ? loadAvailableKits() : Promise.resolve(),
         currentUser.role === "ADMIN" ? loadOfficials() : Promise.resolve(),
       ]);
     } catch (error) {
@@ -242,7 +261,8 @@ export default function InventoryPage() {
   async function refreshData() {
     await Promise.all([
       loadSummary(),
-      isAdmin || user?.role === "COORDINATOR" ? loadKits() : loadMyKits(),
+      isAdmin ? loadKits() : loadMyKits(),
+      isAdmin ? loadAvailableKits() : Promise.resolve(),
     ]);
   }
 
@@ -254,10 +274,32 @@ export default function InventoryPage() {
   async function handleCreateEntry(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!entryForm.quantity || !entryForm.initialNumber || !entryForm.finalNumber) {
+    const payload =
+      entryMode === "single"
+        ? {
+            quantity: 1,
+            initialNumber: entryForm.singleNumber.trim(),
+            finalNumber: entryForm.singleNumber.trim(),
+            notes: entryForm.notes,
+          }
+        : {
+            quantity: Number(entryForm.quantity),
+            initialNumber: entryForm.initialNumber.trim(),
+            finalNumber: entryForm.finalNumber.trim(),
+            notes: entryForm.notes,
+          };
+
+    if (
+      entryMode === "single"
+        ? !payload.initialNumber
+        : !entryForm.quantity || !payload.initialNumber || !payload.finalNumber
+    ) {
       showModal({
         title: "Campos obrigatórios",
-        message: "Preencha quantidade, número inicial e número final.",
+        message:
+          entryMode === "single"
+            ? "Informe o número do kit."
+            : "Preencha quantidade, número inicial e número final.",
         variant: "warning",
         confirmText: "Fechar",
       });
@@ -269,13 +311,14 @@ export default function InventoryPage() {
 
       const result = await apiFetch("/inventory/entries", {
         method: "POST",
-        body: JSON.stringify(entryForm),
+        body: JSON.stringify(payload),
       });
 
       setEntryForm({
         quantity: "",
         initialNumber: "",
         finalNumber: "",
+        singleNumber: "",
         notes: "",
       });
 
@@ -309,10 +352,45 @@ export default function InventoryPage() {
   async function handleTransfer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!transferForm.officialId || !transferForm.initialNumber || !transferForm.finalNumber) {
+    const payload =
+      transferMode === "selected"
+        ? {
+            officialId: transferForm.officialId,
+            kitNumbers: selectedTransferKitNumbers,
+            notes: transferForm.notes,
+          }
+        : transferMode === "single"
+          ? {
+              officialId: transferForm.officialId,
+              initialNumber: transferForm.singleNumber.trim(),
+              finalNumber: transferForm.singleNumber.trim(),
+              notes: transferForm.notes,
+            }
+          : {
+              officialId: transferForm.officialId,
+              initialNumber: transferForm.initialNumber.trim(),
+              finalNumber: transferForm.finalNumber.trim(),
+              notes: transferForm.notes,
+            };
+
+    if (
+      !payload.officialId ||
+      (transferMode === "selected"
+        ? selectedTransferKitNumbers.length === 0
+        : transferMode === "single"
+          ? !("initialNumber" in payload) || !payload.initialNumber
+          : !("initialNumber" in payload) ||
+            !payload.initialNumber ||
+            !payload.finalNumber)
+    ) {
       showModal({
         title: "Campos obrigatórios",
-        message: "Selecione o DCO e informe o número inicial e final dos kits.",
+        message:
+          transferMode === "selected"
+            ? "Selecione o DCO e pelo menos um kit disponível."
+            : transferMode === "single"
+              ? "Selecione o DCO e informe o número do kit."
+              : "Selecione o DCO e informe o número inicial e final dos kits.",
         variant: "warning",
         confirmText: "Fechar",
       });
@@ -324,15 +402,17 @@ export default function InventoryPage() {
 
       const result = await apiFetch("/inventory/transfers", {
         method: "POST",
-        body: JSON.stringify(transferForm),
+        body: JSON.stringify(payload),
       });
 
       setTransferForm({
         officialId: "",
         initialNumber: "",
         finalNumber: "",
+        singleNumber: "",
         notes: "",
       });
+      setSelectedTransferKitNumbers([]);
 
       await refreshData();
 
@@ -358,6 +438,14 @@ export default function InventoryPage() {
     } finally {
       setSavingTransfer(false);
     }
+  }
+
+  function toggleTransferKit(number: string) {
+    setSelectedTransferKitNumbers((current) =>
+      current.includes(number)
+        ? current.filter((item) => item !== number)
+        : [...current, number],
+    );
   }
 
   async function handleFilter(event: React.FormEvent<HTMLFormElement>) {
@@ -387,432 +475,639 @@ export default function InventoryPage() {
     return officials.filter((official) => Boolean(official.user));
   }, [officials]);
 
-  const visibleKits = isOfficial ? myKits : kits;
+  const availableStockKits = useMemo(() => {
+    return availableKits
+      .filter((kit) => kit.status === "DISPONIVEL")
+      .sort((a, b) => a.number.localeCompare(b.number));
+  }, [availableKits]);
+
+  const myKitsComDco = myKits.filter((kit) => kit.status === "COM_DCO");
+  const myKitsUtilizados = myKits.filter((kit) => kit.status === "UTILIZADO");
+  const visibleKits = isAdmin
+    ? kits
+    : myKitsView === "COM_DCO"
+      ? myKitsComDco
+      : myKitsUtilizados;
 
   return (
-  <div className="flex min-h-screen bg-[var(--cdb-light)]">
-    <Sidebar />
+    <div className="flex min-h-screen bg-[var(--cdb-light)]">
+      <Sidebar />
 
-    <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[var(--cdb-blue)]">
-                📦 Estoque
-              </div>
+      <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[var(--cdb-blue)]">
+                  📦 Estoque
+                </div>
 
-              <h1 className="text-3xl font-black tracking-tight text-[var(--cdb-dark)]">
-                Controle de estoque de kits
-              </h1>
+                <h1 className="text-3xl font-black tracking-tight text-[var(--cdb-dark)]">
+                  Controle de estoque de kits
+                </h1>
 
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Gerencie a entrada de kits, repasse para DCOs e acompanhe a
-                numeração disponível, repassada e utilizada nos controles.
-              </p>
-            </div>
-
-            <div className="rounded-3xl bg-[var(--cdb-blue)] px-6 py-5 text-white shadow-lg">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
-                Total de kits
-              </p>
-              <p className="mt-1 text-4xl font-black">{summary?.total ?? 0}</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <SummaryCard title="Disponíveis" value={summary?.disponivel ?? 0} icon="✅" />
-          <SummaryCard title="Com DCO" value={summary?.comDco ?? 0} icon="👤" />
-          <SummaryCard title="Vinculados" value={summary?.vinculadoJogo ?? 0} icon="🏟️" />
-          <SummaryCard title="Utilizados" value={summary?.utilizado ?? 0} icon="🧪" />
-          <SummaryCard title="Cancelados" value={summary?.cancelado ?? 0} icon="🚫" />
-        </section>
-
-        {isAdmin && (
-          <section className="grid gap-6 xl:grid-cols-2">
-            <form
-              onSubmit={handleCreateEntry}
-              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
-            >
-              <div className="mb-5">
-                <h2 className="text-xl font-black text-[var(--cdb-dark)]">
-                  Entrada de kits
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Informe a quantidade e a sequência recebida para inserir os kits
-                  automaticamente no estoque.
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Gerencie a entrada de kits, repasse para DCOs e acompanhe a
+                  numeração disponível, repassada e utilizada nos controles.
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <FieldWithLabel label="Quantidade *">
-                  <input
-                    type="number"
-                    min="1"
-                    value={entryForm.quantity}
-                    onChange={(event) =>
-                      setEntryForm((current) => ({
-                        ...current,
-                        quantity: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="100"
-                  />
-                </FieldWithLabel>
+              <div className="rounded-3xl bg-[var(--cdb-blue)] px-6 py-5 text-white shadow-lg">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
+                  Total de kits
+                </p>
+                <p className="mt-1 text-4xl font-black">
+                  {summary?.total ?? 0}
+                </p>
+              </div>
+            </div>
+          </section>
 
-                <FieldWithLabel label="Número inicial *">
-                  <input
-                    value={entryForm.initialNumber}
-                    onChange={(event) =>
-                      setEntryForm((current) => ({
-                        ...current,
-                        initialNumber: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="2001"
-                  />
-                </FieldWithLabel>
+          {isAdmin && (
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                title="Disponíveis"
+                value={summary?.disponivel ?? 0}
+                icon="✅"
+              />
+              <SummaryCard
+                title="Com DCO"
+                value={summary?.comDco ?? 0}
+                icon="👤"
+              />
+              <SummaryCard
+                title="Utilizados"
+                value={summary?.utilizado ?? 0}
+                icon="🧪"
+              />
+              <SummaryCard
+                title="Cancelados"
+                value={summary?.cancelado ?? 0}
+                icon="🚫"
+              />
+            </section>
+          )}
 
-                <FieldWithLabel label="Número final *">
-                  <input
-                    value={entryForm.finalNumber}
-                    onChange={(event) =>
-                      setEntryForm((current) => ({
-                        ...current,
-                        finalNumber: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="2100"
-                  />
-                </FieldWithLabel>
+          {isAdmin && (
+            <section className="grid gap-6 xl:grid-cols-2">
+              <form
+                onSubmit={handleCreateEntry}
+                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <div className="mb-5">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)]">
+                    Entrada de kits
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Informe a quantidade e a sequência recebida para inserir os
+                    kits automaticamente no estoque.
+                  </p>
+                </div>
+
+                <ModeToggle
+                  value={entryMode}
+                  onChange={setEntryMode}
+                  batchLabel="Entrada por lote"
+                  singleLabel="Kit unitário"
+                />
+
+                {entryMode === "single" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldWithLabel label="Número do kit *">
+                      <input
+                        value={entryForm.singleNumber}
+                        onChange={(event) =>
+                          setEntryForm((current) => ({
+                            ...current,
+                            singleNumber: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="2001"
+                      />
+                    </FieldWithLabel>
+
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-[var(--cdb-blue)]">
+                      <strong className="block font-black">
+                        Entrada unitária
+                      </strong>
+                      <span className="mt-1 block text-xs font-semibold">
+                        O sistema cadastra 1 kit usando o mesmo número como
+                        inicial e final.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <FieldWithLabel label="Quantidade *">
+                      <input
+                        type="number"
+                        min="1"
+                        value={entryForm.quantity}
+                        onChange={(event) =>
+                          setEntryForm((current) => ({
+                            ...current,
+                            quantity: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="100"
+                      />
+                    </FieldWithLabel>
+
+                    <FieldWithLabel label="Número inicial *">
+                      <input
+                        value={entryForm.initialNumber}
+                        onChange={(event) =>
+                          setEntryForm((current) => ({
+                            ...current,
+                            initialNumber: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="2001"
+                      />
+                    </FieldWithLabel>
+
+                    <FieldWithLabel label="Número final *">
+                      <input
+                        value={entryForm.finalNumber}
+                        onChange={(event) =>
+                          setEntryForm((current) => ({
+                            ...current,
+                            finalNumber: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="2100"
+                      />
+                    </FieldWithLabel>
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <FieldWithLabel label="Observação">
+                    <textarea
+                      value={entryForm.notes}
+                      onChange={(event) =>
+                        setEntryForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                      className="min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                      placeholder="Ex.: Kits recebidos da remessa do mês"
+                    />
+                  </FieldWithLabel>
+                </div>
+
+                <div className="mt-5 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingEntry}
+                    className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingEntry ? "Cadastrando..." : "Cadastrar entrada"}
+                  </button>
+                </div>
+              </form>
+
+              <form
+                onSubmit={handleTransfer}
+                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <div className="mb-5">
+                  <h2 className="text-xl font-black text-[var(--cdb-dark)]">
+                    Repasse para DCO
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Repasses mudam os kits de disponível para responsabilidade
+                    do DCO selecionado.
+                  </p>
+                </div>
+
+                <TransferModeToggle
+                  value={transferMode}
+                  onChange={setTransferMode}
+                />
+
+                <div className="mb-4">
+                  <FieldWithLabel label="DCO *">
+                    <select
+                      value={transferForm.officialId}
+                      onChange={(event) =>
+                        setTransferForm((current) => ({
+                          ...current,
+                          officialId: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                    >
+                      <option value="">Selecione</option>
+                      {dcoOptions.map((official) => (
+                        <option key={official.id} value={official.id}>
+                          {official.user?.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FieldWithLabel>
+                </div>
+
+                {transferMode === "selected" ? (
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-[var(--cdb-dark)]">
+                          Kits disponíveis para repasse
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Selecione exatamente os kits que serão repassados ao
+                          DCO escolhido.
+                        </p>
+                      </div>
+
+                      <span className="w-fit rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-[var(--cdb-blue)]">
+                        {selectedTransferKitNumbers.length} selecionado(s)
+                      </span>
+                    </div>
+
+                    {availableStockKits.length === 0 ? (
+                      <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-center text-sm font-semibold text-slate-500">
+                        Nenhum kit disponível para repasse.
+                      </div>
+                    ) : (
+                      <div className="mt-4 grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                        {availableStockKits.map((kit) => {
+                          const checked = selectedTransferKitNumbers.includes(
+                            kit.number,
+                          );
+
+                          return (
+                            <button
+                              key={kit.id}
+                              type="button"
+                              onClick={() => toggleTransferKit(kit.number)}
+                              className={`rounded-2xl border px-4 py-3 text-left text-sm font-black transition ${
+                                checked
+                                  ? "border-[var(--cdb-blue)] bg-blue-50 text-[var(--cdb-blue)] shadow-sm"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                              }`}
+                            >
+                              <span className="flex items-center justify-between gap-3">
+                                <span>Kit {kit.number}</span>
+                                <span
+                                  className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${
+                                    checked
+                                      ? "border-[var(--cdb-blue)] bg-[var(--cdb-blue)] text-white"
+                                      : "border-slate-300 bg-white text-transparent"
+                                  }`}
+                                >
+                                  ✓
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : transferMode === "single" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldWithLabel label="Número do kit *">
+                      <input
+                        value={transferForm.singleNumber}
+                        onChange={(event) =>
+                          setTransferForm((current) => ({
+                            ...current,
+                            singleNumber: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="2001"
+                      />
+                    </FieldWithLabel>
+
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-[var(--cdb-blue)]">
+                      <strong className="block font-black">
+                        Repasse unitário
+                      </strong>
+                      <span className="mt-1 block text-xs font-semibold">
+                        Informe apenas um kit específico para repasse.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldWithLabel label="Número inicial *">
+                      <input
+                        value={transferForm.initialNumber}
+                        onChange={(event) =>
+                          setTransferForm((current) => ({
+                            ...current,
+                            initialNumber: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="2001"
+                      />
+                    </FieldWithLabel>
+
+                    <FieldWithLabel label="Número final *">
+                      <input
+                        value={transferForm.finalNumber}
+                        onChange={(event) =>
+                          setTransferForm((current) => ({
+                            ...current,
+                            finalNumber: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                        placeholder="2010"
+                      />
+                    </FieldWithLabel>
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <FieldWithLabel label="Observação">
+                    <textarea
+                      value={transferForm.notes}
+                      onChange={(event) =>
+                        setTransferForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                      className="min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                      placeholder="Ex.: Repasse para jogos do fim de semana"
+                    />
+                  </FieldWithLabel>
+                </div>
+
+                <div className="mt-5 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingTransfer}
+                    className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingTransfer ? "Repassando..." : "Repassar kits"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {isAdmin && summary?.byDco && summary.byDco.length > 0 && (
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5">
+                <h2 className="text-xl font-black text-[var(--cdb-dark)]">
+                  Kits por DCO
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Veja a quantidade e numeração sob responsabilidade de cada
+                  DCO.
+                </p>
               </div>
 
-              <div className="mt-4">
-                <FieldWithLabel label="Observação">
-                  <textarea
-                    value={entryForm.notes}
-                    onChange={(event) =>
-                      setEntryForm((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="Ex.: Kits recebidos da remessa do mês"
-                  />
-                </FieldWithLabel>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {summary.byDco.map((item) => (
+                  <div
+                    key={item.officialId}
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-5"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="font-black text-slate-900">
+                          {item.name}
+                        </h3>
+                        <p className="text-sm text-slate-500">{item.email}</p>
+                      </div>
+
+                      <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[var(--cdb-blue)]">
+                        {item.total} kit(s)
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {item.kits.map((kit) => (
+                        <span
+                          key={kit.id}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700"
+                        >
+                          {kit.number}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-xl font-black text-[var(--cdb-dark)]">
+                  {isAdmin ? "Lista de kits" : "Meus kits"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {isAdmin
+                    ? "Consulte kits por número, status ou DCO responsável."
+                    : "Acompanhe os kits que estão com você e os kits já utilizados em controles."}
+                </p>
+
+                {!isAdmin && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMyKitsView("COM_DCO")}
+                      className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                        myKitsView === "COM_DCO"
+                          ? "border-[var(--cdb-blue)] bg-[var(--cdb-blue)] text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      Comigo para uso ({myKitsComDco.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMyKitsView("UTILIZADO")}
+                      className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                        myKitsView === "UTILIZADO"
+                          ? "border-[var(--cdb-blue)] bg-[var(--cdb-blue)] text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      Utilizados ({myKitsUtilizados.length})
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={savingEntry}
-                  className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+              {isAdmin && (
+                <form
+                  onSubmit={handleFilter}
+                  className="grid gap-3 md:grid-cols-4"
                 >
-                  {savingEntry ? "Cadastrando..." : "Cadastrar entrada"}
-                </button>
-              </div>
-            </form>
-
-            <form
-              onSubmit={handleTransfer}
-              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
-            >
-              <div className="mb-5">
-                <h2 className="text-xl font-black text-[var(--cdb-dark)]">
-                  Repasse para DCO
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Repasses mudam os kits de disponível para responsabilidade do
-                  DCO selecionado.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <FieldWithLabel label="DCO *">
-                  <select
-                    value={transferForm.officialId}
+                  <input
+                    value={filters.number}
                     onChange={(event) =>
-                      setTransferForm((current) => ({
+                      setFilters((current) => ({
+                        ...current,
+                        number: event.target.value,
+                      }))
+                    }
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                    placeholder="Número do kit"
+                  />
+
+                  <select
+                    value={filters.status}
+                    onChange={(event) =>
+                      setFilters((current) => ({
+                        ...current,
+                        status: event.target.value,
+                      }))
+                    }
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                  >
+                    <option value="">Todos os status</option>
+                    <option value="DISPONIVEL">Disponível</option>
+                    <option value="COM_DCO">Com DCO</option>
+                    <option value="UTILIZADO">Utilizado</option>
+                    <option value="CANCELADO">Cancelado</option>
+                  </select>
+
+                  <select
+                    value={filters.officialId}
+                    onChange={(event) =>
+                      setFilters((current) => ({
                         ...current,
                         officialId: event.target.value,
                       }))
                     }
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
                   >
-                    <option value="">Selecione</option>
+                    <option value="">Todos os DCOs</option>
                     {dcoOptions.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user?.name}
                       </option>
                     ))}
                   </select>
-                </FieldWithLabel>
 
-                <FieldWithLabel label="Número inicial *">
-                  <input
-                    value={transferForm.initialNumber}
-                    onChange={(event) =>
-                      setTransferForm((current) => ({
-                        ...current,
-                        initialNumber: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="2001"
-                  />
-                </FieldWithLabel>
+                  <button
+                    type="submit"
+                    className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95"
+                  >
+                    Filtrar
+                  </button>
+                </form>
+              )}
+            </div>
 
-                <FieldWithLabel label="Número final *">
-                  <input
-                    value={transferForm.finalNumber}
-                    onChange={(event) =>
-                      setTransferForm((current) => ({
-                        ...current,
-                        finalNumber: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="2010"
-                  />
-                </FieldWithLabel>
+            {loading ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">
+                Carregando estoque...
               </div>
-
-              <div className="mt-4">
-                <FieldWithLabel label="Observação">
-                  <textarea
-                    value={transferForm.notes}
-                    onChange={(event) =>
-                      setTransferForm((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="Ex.: Repasse para jogos do fim de semana"
-                  />
-                </FieldWithLabel>
+            ) : visibleKits.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">
+                {isAdmin
+                  ? "Nenhum kit encontrado."
+                  : myKitsView === "COM_DCO"
+                    ? "Você não possui kits com status Com DCO no momento."
+                    : "Você ainda não possui kits utilizados."}
               </div>
-
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={savingTransfer}
-                  className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {savingTransfer ? "Repassando..." : "Repassar kits"}
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        {summary?.byDco && summary.byDco.length > 0 && (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h2 className="text-xl font-black text-[var(--cdb-dark)]">
-                Kits por DCO
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Veja a quantidade e numeração sob responsabilidade de cada DCO.
-              </p>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              {summary.byDco.map((item) => (
-                <div
-                  key={item.officialId}
-                  className="rounded-3xl border border-slate-200 bg-slate-50 p-5"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="font-black text-slate-900">{item.name}</h3>
-                      <p className="text-sm text-slate-500">{item.email}</p>
-                    </div>
-
-                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[var(--cdb-blue)]">
-                      {item.total} kit(s)
-                    </span>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {item.kits.map((kit) => (
-                      <span
-                        key={kit.id}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700"
-                      >
-                        {kit.number}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-xl font-black text-[var(--cdb-dark)]">
-                {isOfficial ? "Meus kits" : "Lista de kits"}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {isOfficial
-                  ? "Kits sob sua responsabilidade para uso nos controles."
-                  : "Consulte kits por número, status ou DCO responsável."}
-              </p>
-            </div>
-
-            {!isOfficial && (
-              <form onSubmit={handleFilter} className="grid gap-3 md:grid-cols-4">
-                <input
-                  value={filters.number}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      number: event.target.value,
-                    }))
-                  }
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                  placeholder="Número do kit"
-                />
-
-                <select
-                  value={filters.status}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      status: event.target.value,
-                    }))
-                  }
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="">Todos os status</option>
-                  <option value="DISPONIVEL">Disponível</option>
-                  <option value="COM_DCO">Com DCO</option>
-                  <option value="VINCULADO_JOGO">Vinculado ao jogo</option>
-                  <option value="UTILIZADO">Utilizado</option>
-                  <option value="CANCELADO">Cancelado</option>
-                </select>
-
-                <select
-                  value={filters.officialId}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      officialId: event.target.value,
-                    }))
-                  }
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="">Todos os DCOs</option>
-                  {dcoOptions.map((official) => (
-                    <option key={official.id} value={official.id}>
-                      {official.user?.name}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="submit"
-                  className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95"
-                >
-                  Filtrar
-                </button>
-              </form>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">
-              Carregando estoque...
-            </div>
-          ) : visibleKits.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">
-              Nenhum kit encontrado.
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-3xl border border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-5 py-4 text-left font-black text-slate-700">
-                        Número
-                      </th>
-                      <th className="px-5 py-4 text-left font-black text-slate-700">
-                        Status
-                      </th>
-                      {!isOfficial && (
+            ) : (
+              <div className="overflow-hidden rounded-3xl border border-slate-200">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
                         <th className="px-5 py-4 text-left font-black text-slate-700">
-                          DCO responsável
+                          Número
                         </th>
-                      )}
-                      <th className="px-5 py-4 text-left font-black text-slate-700">
-                        Jogo
-                      </th>
-                    </tr>
-                  </thead>
+                        <th className="px-5 py-4 text-left font-black text-slate-700">
+                          Status
+                        </th>
+                        {isAdmin && (
+                          <th className="px-5 py-4 text-left font-black text-slate-700">
+                            DCO responsável
+                          </th>
+                        )}
+                        <th className="px-5 py-4 text-left font-black text-slate-700">
+                          Jogo
+                        </th>
+                      </tr>
+                    </thead>
 
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {visibleKits.map((kit) => {
-                      const lastMatch = kit.matchKits?.[0]?.match;
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {visibleKits.map((kit) => {
+                        const lastMatch = kit.matchKits?.[0]?.match;
 
-                      return (
-                        <tr key={kit.id} className="hover:bg-slate-50">
-                          <td className="px-5 py-4 font-black text-slate-900">
-                            {kit.number}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${
-                                statusClass[kit.status]
-                              }`}
-                            >
-                              {statusLabel[kit.status]}
-                            </span>
-                          </td>
-
-                          {!isOfficial && (
-                            <td className="px-5 py-4 text-slate-600">
-                              {kit.currentOfficial?.user?.name || "-"}
+                        return (
+                          <tr key={kit.id} className="hover:bg-slate-50">
+                            <td className="px-5 py-4 font-black text-slate-900">
+                              {kit.number}
                             </td>
-                          )}
 
-                          <td className="px-5 py-4 text-slate-600">
-                            {lastMatch
-                              ? `${lastMatch.homeTeam} x ${lastMatch.awayTeam}`
-                              : "-"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <td className="px-5 py-4">
+                              <span
+                                className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${
+                                  statusClass[kit.status]
+                                }`}
+                              >
+                                {statusLabel[kit.status]}
+                              </span>
+                            </td>
+
+                            {isAdmin && (
+                              <td className="px-5 py-4 text-slate-600">
+                                {kit.currentOfficial?.user?.name || "-"}
+                              </td>
+                            )}
+
+                            <td className="px-5 py-4 text-slate-600">
+                              {lastMatch ? (
+                                <div className="space-y-1">
+                                  <p className="font-semibold text-slate-700">
+                                    {lastMatch.homeTeam} x {lastMatch.awayTeam}
+                                  </p>
+
+                                  <Link
+                                    href={`/dashboard/matches/${lastMatch.id}`}
+                                    className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                                  >
+                                    Ver jogo
+                                  </Link>
+                                </div>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
-        </section>
-      </div>
+            )}
+          </section>
+        </div>
 
-          <ConfirmModal
-            open={modal.open}
-            title={modal.title}
-            message={modal.message}
-            variant={modal.variant}
-            confirmText={modal.confirmText}
-            cancelText="Fechar"
-            onCancel={closeModal}
-          />
-        </main>
-      </div>
-    
+        <ConfirmModal
+          open={modal.open}
+          title={modal.title}
+          message={modal.message}
+          variant={modal.variant}
+          confirmText={modal.confirmText}
+          cancelText="Fechar"
+          onCancel={closeModal}
+        />
+      </main>
+    </div>
   );
 }
 
@@ -841,6 +1136,82 @@ function SummaryCard({
           {icon}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ModeToggle({
+  value,
+  onChange,
+  batchLabel,
+  singleLabel,
+}: {
+  value: "batch" | "single";
+  onChange: (value: "batch" | "single") => void;
+  batchLabel: string;
+  singleLabel: string;
+}) {
+  return (
+    <div className="mb-5 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+      <button
+        type="button"
+        onClick={() => onChange("batch")}
+        className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+          value === "batch"
+            ? "bg-[var(--cdb-blue)] text-white shadow-sm"
+            : "text-slate-600 hover:bg-white"
+        }`}
+      >
+        {batchLabel}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onChange("single")}
+        className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+          value === "single"
+            ? "bg-[var(--cdb-blue)] text-white shadow-sm"
+            : "text-slate-600 hover:bg-white"
+        }`}
+      >
+        {singleLabel}
+      </button>
+    </div>
+  );
+}
+
+function TransferModeToggle({
+  value,
+  onChange,
+}: {
+  value: "selected" | "batch" | "single";
+  onChange: (value: "selected" | "batch" | "single") => void;
+}) {
+  const options: Array<{
+    value: "selected" | "batch" | "single";
+    label: string;
+  }> = [
+    { value: "selected", label: "Selecionar disponíveis" },
+    { value: "batch", label: "Repasse por lote" },
+    { value: "single", label: "Kit unitário" },
+  ];
+
+  return (
+    <div className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+            value === option.value
+              ? "bg-[var(--cdb-blue)] text-white shadow-sm"
+              : "text-slate-600 hover:bg-white"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

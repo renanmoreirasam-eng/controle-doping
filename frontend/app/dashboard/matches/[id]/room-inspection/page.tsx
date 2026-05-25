@@ -180,38 +180,90 @@ export default function RoomInspectionPage() {
     );
   }
 
+  function resizeImageFile(
+    file: File,
+  ): Promise<RoomInspectionPhoto> {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('Selecione apenas arquivos de imagem.'));
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onerror = () => {
+        reject(new Error('Não foi possível ler a imagem selecionada.'));
+      };
+
+      reader.onload = () => {
+        const image = new Image();
+
+        image.onerror = () => {
+          reject(new Error('Não foi possível processar a imagem selecionada.'));
+        };
+
+        image.onload = () => {
+          const maxSize = 1280;
+          const scale = Math.min(
+            1,
+            maxSize / Math.max(image.width, image.height),
+          );
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(image.width * scale);
+          canvas.height = Math.round(image.height * scale);
+
+          const context = canvas.getContext('2d');
+
+          if (!context) {
+            reject(new Error('Não foi possível preparar a imagem.'));
+            return;
+          }
+
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+
+          resolve({
+            fileName: file.name.replace(/\.[^/.]+$/, '.jpg'),
+            dataUrl,
+          });
+        };
+
+        image.src = String(reader.result);
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function handleRoomPhotos(
     files: FileList | null,
   ) {
     if (!files) return;
 
-    const photos = await Promise.all(
-      Array.from(files).map(
-        (file) =>
-          new Promise<RoomInspectionPhoto>(
-            (resolve) => {
-              const reader =
-                new FileReader();
+    try {
+      const selectedFiles = Array.from(files);
 
-              reader.onload = () => {
-                resolve({
-                  fileName: file.name,
-                  dataUrl: String(
-                    reader.result,
-                  ),
-                });
-              };
+      if (roomPhotos.length + selectedFiles.length > 6) {
+        alert('Você pode anexar no máximo 6 fotos por inspeção.');
+        return;
+      }
 
-              reader.readAsDataURL(file);
-            },
-          ),
-      ),
-    );
+      const photos = await Promise.all(
+        selectedFiles.map((file) => resizeImageFile(file)),
+      );
 
-    setRoomPhotos((prev) => [
-      ...prev,
-      ...photos,
-    ]);
+      setRoomPhotos((prev) => [
+        ...prev,
+        ...photos,
+      ]);
+    } catch (error: any) {
+      alert(
+        error.message ||
+          'Não foi possível processar as fotos selecionadas.',
+      );
+    }
   }
 
   function removeRoomPhoto(
@@ -246,9 +298,13 @@ export default function RoomInspectionPage() {
         `/dashboard/matches/${matchId}`,
       );
     } catch (error: any) {
+      const statusCode = error.response?.status;
+
       alert(
         error.response?.data?.message ||
-          'Erro ao salvar inspeção',
+          (statusCode === 413
+            ? 'As fotos estão muito grandes. Tente anexar menos fotos ou imagens menores.'
+            : 'Erro ao salvar inspeção'),
       );
     }
   }
