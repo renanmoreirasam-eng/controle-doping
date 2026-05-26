@@ -19,6 +19,7 @@ export class TeamsController {
     body: {
       name: string;
       shortName?: string;
+      cnpj?: string;
       city: string;
       state: string;
       category?: string;
@@ -35,6 +36,7 @@ export class TeamsController {
     body: {
       name?: string;
       shortName?: string;
+      cnpj?: string;
       city?: string;
       state?: string;
       category?: string;

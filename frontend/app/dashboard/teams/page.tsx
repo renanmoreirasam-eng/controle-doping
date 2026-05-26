@@ -9,6 +9,7 @@ type Team = {
   id: string;
   name: string;
   shortName?: string;
+  cnpj?: string | null;
   city: string;
   state: string;
   isActive: boolean;
@@ -40,6 +41,20 @@ const emptyModal: ModalState = {
   cancelText: "Fechar",
 };
 
+function formatCnpj(value: string) {
+  const onlyNumbers = value.replace(/\D/g, "").slice(0, 14);
+
+  return onlyNumbers
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+}
+
+function clearCnpj(value: string) {
+  return value.replace(/\D/g, "");
+}
+
 export default function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [search, setSearch] = useState("");
@@ -48,6 +63,7 @@ export default function TeamsPage() {
 
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
+  const [cnpj, setCnpj] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [isActive, setIsActive] = useState(true);
@@ -91,7 +107,7 @@ export default function TeamsPage() {
 
   const filteredTeams = teams.filter((team) => {
     const value =
-      `${team.name} ${team.shortName || ""} ${team.city} ${team.state}`.toLowerCase();
+      `${team.name} ${team.shortName || ""} ${team.cnpj || ""} ${team.city} ${team.state}`.toLowerCase();
 
     return value.includes(search.toLowerCase());
   });
@@ -128,6 +144,7 @@ export default function TeamsPage() {
     setEditingId(null);
     setName("");
     setShortName("");
+    setCnpj("");
     setCity("");
     setState("");
     setIsActive(true);
@@ -137,6 +154,7 @@ export default function TeamsPage() {
     setEditingId(team.id);
     setName(team.name);
     setShortName(team.shortName || "");
+    setCnpj(team.cnpj || "");
     setCity(team.city);
     setState(team.state);
     setIsActive(team.isActive);
@@ -152,6 +170,7 @@ export default function TeamsPage() {
       await api.post("/teams", {
         name,
         shortName,
+        cnpj: cnpj.trim() || null,
         city,
         state,
         isActive,
@@ -181,6 +200,7 @@ export default function TeamsPage() {
       await api.patch(`/teams/${editingId}`, {
         name,
         shortName,
+        cnpj: cnpj.trim() || null,
         city,
         state,
         isActive,
@@ -382,7 +402,7 @@ export default function TeamsPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
                 <label className="flex flex-col gap-2">
                   <input
                     className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
@@ -405,6 +425,17 @@ export default function TeamsPage() {
                   <span className="text-sm font-bold text-slate-700">
                     Nome curto
                   </span>
+                </label>
+
+                <label className="flex flex-col gap-2">
+                  <input
+                    className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
+                     placeholder="00.000.000/0000-00"
+                    value={cnpj}
+                    onChange={(event) => setCnpj(formatCnpj(event.target.value))}
+                    maxLength={18}
+                  />
+                  <span className="text-sm font-bold text-slate-700">CNPJ</span>
                 </label>
 
                 <label className="flex flex-col gap-2">
@@ -481,7 +512,7 @@ export default function TeamsPage() {
 
               <input
                 className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 w-full xl:w-[380px] focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
-                placeholder="Buscar por time, cidade ou UF..."
+                placeholder="Buscar por time, CNPJ, cidade ou UF..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -512,6 +543,12 @@ export default function TeamsPage() {
                           <span className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
                             Nome curto: {team.shortName || "Não informado"}
                           </span>
+
+                          {team.cnpj && (
+                            <span className="bg-slate-100 px-3 py-2 rounded-xl text-sm text-slate-700">
+                              CNPJ: {team.cnpj}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

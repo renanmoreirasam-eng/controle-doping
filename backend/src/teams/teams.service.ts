@@ -8,6 +8,7 @@ export class TeamsService {
   async create(data: {
     name: string;
     shortName?: string;
+    cnpj?: string | null;
     city: string;
     state: string;
     category?: string;
@@ -24,20 +25,35 @@ export class TeamsService {
       throw new BadRequestException('Time já cadastrado.');
     }
 
-    return this.prisma.team.create({ data });
+    return this.prisma.team.create({
+      data: {
+        ...data,
+        cnpj: data.cnpj?.trim() || null,
+      },
+    });
   }
 
-  async update(id: string, data: {
-    name?: string;
-    shortName?: string;
-    city?: string;
-    state?: string;
-    category?: string;
-    isActive?: boolean;
-  }) {
+  async update(
+    id: string,
+    data: {
+      name?: string;
+      shortName?: string;
+      cnpj?: string | null;
+      city?: string;
+      state?: string;
+      category?: string;
+      isActive?: boolean;
+    },
+  ) {
     return this.prisma.team.update({
       where: { id },
-      data,
+      data: {
+        ...data,
+        cnpj:
+          data.cnpj === undefined
+            ? undefined
+            : data.cnpj?.trim() || null,
+      },
     });
   }
 
