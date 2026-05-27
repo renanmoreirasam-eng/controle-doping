@@ -111,6 +111,7 @@ export default function InventoryPage() {
   const [savingTransfer, setSavingTransfer] = useState(false);
   const [deletingKitId, setDeletingKitId] = useState<string | null>(null);
   const [movingKitId, setMovingKitId] = useState<string | null>(null);
+  const [returningKitId, setReturningKitId] = useState<string | null>(null);
   const [moveTargetOfficialByKit, setMoveTargetOfficialByKit] = useState<
     Record<string, string>
   >({});
@@ -610,6 +611,69 @@ export default function InventoryPage() {
       });
     } finally {
       setMovingKitId(null);
+    }
+  }
+
+  function handleReturnKitToStock(kit: Kit) {
+    if (kit.status !== "COM_DCO") {
+      showModal({
+        title: "Ação não permitida",
+        message: "Somente kits com DCO podem voltar para disponível.",
+        variant: "warning",
+        confirmText: "Fechar",
+      });
+      return;
+    }
+
+    showModal({
+      title: "Voltar kit para disponível",
+      message: `Deseja voltar o kit ${kit.number} para disponível no estoque? Ele deixará de ficar sob responsabilidade de ${kit.currentOfficial?.user?.name || "DCO atual"}.`,
+      variant: "warning",
+      confirmText: "Voltar",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        closeModal();
+        await executeReturnKitToStock(kit);
+      },
+    });
+  }
+
+  async function executeReturnKitToStock(kit: Kit) {
+    try {
+      setReturningKitId(kit.id);
+
+      await apiFetch(`/inventory/kits/${kit.id}/return-to-stock`, {
+        method: "PATCH",
+      });
+
+      setMoveTargetOfficialByKit((current) => {
+        const next = { ...current };
+        delete next[kit.id];
+        return next;
+      });
+
+      await refreshData();
+
+      showModal({
+        title: "Kit disponível",
+        message: `O kit ${kit.number} voltou para disponível no estoque.`,
+        variant: "success",
+        confirmText: "Fechar",
+      });
+    } catch (error) {
+      console.error(error);
+
+      showModal({
+        title: "Erro ao voltar kit",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível voltar o kit para disponível.",
+        variant: "danger",
+        confirmText: "Fechar",
+      });
+    } finally {
+      setReturningKitId(null);
     }
   }
 
@@ -1305,12 +1369,31 @@ export default function InventoryPage() {
                                       <button
                                         type="button"
                                         onClick={() => handleMoveKitToDco(kit)}
-                                        disabled={movingKitId === kit.id}
+                                        disabled={
+                                          movingKitId === kit.id ||
+                                          returningKitId === kit.id
+                                        }
                                         className="inline-flex justify-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                                       >
                                         {movingKitId === kit.id
                                           ? "Movendo..."
                                           : "↪️ Mover"}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleReturnKitToStock(kit)
+                                        }
+                                        disabled={
+                                          returningKitId === kit.id ||
+                                          movingKitId === kit.id
+                                        }
+                                        className="inline-flex justify-center rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {returningKitId === kit.id
+                                          ? "Voltando..."
+                                          : "↩️ Disponível"}
                                       </button>
                                     </div>
                                   ) : (

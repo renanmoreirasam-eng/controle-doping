@@ -100,6 +100,11 @@ export class InventoryController {
     });
   }
 
+  @Patch("kits/:kitId/return-to-stock")
+  returnKitToStock(@Req() req: any, @Param("kitId") kitId: string) {
+    return this.inventoryService.returnKitToStock(req.user, kitId);
+  }
+
   @Get("matches/:matchId/kits")
   listMatchKits(@Param("matchId") matchId: string) {
     return this.inventoryService.listMatchKits(matchId);

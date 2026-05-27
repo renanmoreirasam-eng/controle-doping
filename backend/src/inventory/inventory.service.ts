@@ -842,6 +842,85 @@ export class InventoryService {
     });
   }
 
+
+  async returnKitToStock(user: AuthUser, kitId: string) {
+    this.ensureAdmin(user);
+
+    const kit = await this.prisma.kit.findUnique({
+      where: {
+        id: kitId,
+      },
+      include: {
+        currentOfficial: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        matchKits: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!kit) {
+      throw new NotFoundException("Kit não encontrado.");
+    }
+
+    if (kit.status !== "COM_DCO") {
+      throw new BadRequestException(
+        `Somente kits com DCO podem voltar para disponível. Status atual: ${kit.status}.`,
+      );
+    }
+
+    if (!kit.currentOfficialId) {
+      throw new BadRequestException(
+        "Este kit não possui DCO responsável atualmente.",
+      );
+    }
+
+    if (kit.matchKits.length > 0) {
+      throw new BadRequestException(
+        "Não é possível voltar para disponível um kit vinculado a uma partida.",
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedKit = await tx.kit.update({
+        where: {
+          id: kitId,
+        },
+        data: {
+          status: "DISPONIVEL",
+          currentOfficialId: null,
+        },
+      });
+
+      await tx.kitMovement.create({
+        data: {
+          kitId,
+          type: "DEVOLUCAO_ESTOQUE",
+          fromOfficialId: kit.currentOfficialId,
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          notes: `Kit ${kit.number} voltou para disponível no estoque. DCO anterior: ${kit.currentOfficial?.user.name || "não identificado"}.`,
+        },
+      });
+
+      return {
+        message: "Kit voltou para disponível com sucesso.",
+        kit: updatedKit,
+      };
+    });
+  }
+
   async listMatchKits(matchId: string) {
     return this.prisma.matchKit.findMany({
       where: {
