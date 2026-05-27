@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -77,6 +78,24 @@ export class InventoryController {
             .map((number: unknown) => String(number || "").trim())
             .filter(Boolean)
         : undefined,
+      notes: body.notes,
+    });
+  }
+
+
+  @Delete("kits/:kitId")
+  deleteKit(@Req() req: any, @Param("kitId") kitId: string) {
+    return this.inventoryService.deleteKit(req.user, kitId);
+  }
+
+  @Patch("kits/:kitId/transfer")
+  moveKitToDco(
+    @Req() req: any,
+    @Param("kitId") kitId: string,
+    @Body() body: any,
+  ) {
+    return this.inventoryService.moveKitToDco(req.user, kitId, {
+      officialId: body.officialId,
       notes: body.notes,
     });
   }

@@ -72,6 +72,8 @@ export function ConfirmModal({
     default: 'ℹ️',
   }[variant];
 
+  const shouldShowCancelButton = Boolean(cancelText) && cancelText !== confirmText;
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4">
       <button
@@ -103,14 +105,20 @@ export function ConfirmModal({
           {message}
         </p>
 
-        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-800 transition hover:bg-slate-200"
-          >
-            {cancelText}
-          </button>
+        <div
+          className={`mt-6 grid grid-cols-1 gap-3 ${
+            shouldShowCancelButton ? 'sm:grid-cols-2' : ''
+          }`}
+        >
+          {shouldShowCancelButton && (
+            <button
+              type="button"
+              onClick={handleClose}
+              className="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-800 transition hover:bg-slate-200"
+            >
+              {cancelText}
+            </button>
+          )}
 
           <button
             type="button"

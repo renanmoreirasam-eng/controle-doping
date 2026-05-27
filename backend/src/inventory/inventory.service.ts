@@ -29,6 +29,12 @@ type TransferKitsDto = {
   notes?: string;
 };
 
+
+type MoveKitDto = {
+  officialId: string;
+  notes?: string;
+};
+
 @Injectable()
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -658,6 +664,181 @@ export class InventoryService {
       orderBy: {
         createdAt: "desc",
       },
+    });
+  }
+
+
+  async deleteKit(user: AuthUser, kitId: string) {
+    this.ensureAdmin(user);
+
+    const kit = await this.prisma.kit.findUnique({
+      where: {
+        id: kitId,
+      },
+      include: {
+        matchKits: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!kit) {
+      throw new NotFoundException("Kit não encontrado.");
+    }
+
+    if (kit.status !== "DISPONIVEL") {
+      throw new BadRequestException(
+        `Somente kits disponíveis podem ser excluídos. Status atual: ${kit.status}.`,
+      );
+    }
+
+    if (kit.currentOfficialId) {
+      throw new BadRequestException(
+        "Não é possível excluir um kit que está sob responsabilidade de um DCO.",
+      );
+    }
+
+    if (kit.matchKits.length > 0) {
+      throw new BadRequestException(
+        "Não é possível excluir um kit vinculado a uma partida.",
+      );
+    }
+
+    await this.prisma.kit.delete({
+      where: {
+        id: kitId,
+      },
+    });
+
+    return {
+      message: "Kit excluído com sucesso.",
+    };
+  }
+
+  async moveKitToDco(user: AuthUser, kitId: string, data: MoveKitDto) {
+    this.ensureAdmin(user);
+
+    if (!data.officialId) {
+      throw new BadRequestException("Informe o DCO de destino.");
+    }
+
+    const [kit, targetOfficial] = await Promise.all([
+      this.prisma.kit.findUnique({
+        where: {
+          id: kitId,
+        },
+        include: {
+          currentOfficial: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          matchKits: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      }),
+      this.prisma.official.findUnique({
+        where: {
+          id: data.officialId,
+        },
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!kit) {
+      throw new NotFoundException("Kit não encontrado.");
+    }
+
+    if (!targetOfficial) {
+      throw new NotFoundException("DCO de destino não encontrado.");
+    }
+
+    if (!targetOfficial.active) {
+      throw new BadRequestException(
+        "Não é possível mover kit para um DCO inativo.",
+      );
+    }
+
+    if (kit.status !== "COM_DCO") {
+      throw new BadRequestException(
+        `Somente kits com DCO podem ser movidos. Status atual: ${kit.status}.`,
+      );
+    }
+
+    if (!kit.currentOfficialId) {
+      throw new BadRequestException(
+        "Este kit não possui DCO responsável atualmente.",
+      );
+    }
+
+    if (kit.currentOfficialId === data.officialId) {
+      throw new BadRequestException("O kit já está com este DCO.");
+    }
+
+    if (kit.matchKits.length > 0) {
+      throw new BadRequestException(
+        "Não é possível mover um kit que já foi vinculado a uma partida.",
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedKit = await tx.kit.update({
+        where: {
+          id: kitId,
+        },
+        data: {
+          currentOfficialId: data.officialId,
+        },
+        include: {
+          currentOfficial: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      await tx.kitMovement.create({
+        data: {
+          kitId,
+          type: "REPASSE_DCO",
+          fromOfficialId: kit.currentOfficialId,
+          toOfficialId: data.officialId,
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          notes:
+            data.notes ||
+            `Kit ${kit.number} movido de ${kit.currentOfficial?.user.name || "DCO anterior"} para ${targetOfficial.user.name}.`,
+        },
+      });
+
+      return {
+        message: "Kit movido para outro DCO com sucesso.",
+        kit: updatedKit,
+      };
     });
   }
 
