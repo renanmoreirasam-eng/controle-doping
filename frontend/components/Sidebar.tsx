@@ -28,13 +28,13 @@ const allMenus = [
     name: 'Estoque de Kits',
     href: '/dashboard/inventory',
     icon: '📦',
-    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
+    roles: ['ADMIN', 'COORDINATOR'],
   },
   {
     name: 'Oficiais',
     href: '/dashboard/officials',
     icon: '👥',
-    roles: ['ADMIN', 'COORDINATOR'],
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
     name: 'Campeonatos',
@@ -52,7 +52,7 @@ const allMenus = [
     name: 'Times',
     href: '/dashboard/teams',
     icon: '⚽',
-    roles: ['ADMIN'],
+    roles: ['ADMIN', 'COORDINATOR'],
   },
 ];
 

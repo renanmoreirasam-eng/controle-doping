@@ -5,15 +5,16 @@ import {
   Param,
   Patch,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
 import { OfficialsService } from './officials.service';
 
 @Controller('officials')
 export class OfficialsController {
-  constructor(
-    private officialsService: OfficialsService,
-  ) {}
+  constructor(private officialsService: OfficialsService) {}
 
   @Post()
   async create(
@@ -22,6 +23,13 @@ export class OfficialsController {
       userId: string;
       phone?: string;
       pixKey?: string;
+      documentType?: string;
+      documentNumber?: string;
+      cpf?: string;
+      birthDate?: string | Date | null;
+      address?: string;
+      shirtSize?: string;
+      operationalRole?: string;
     },
   ) {
     return this.officialsService.create(body);
@@ -37,9 +45,42 @@ export class OfficialsController {
       phone?: string;
       pixKey?: string;
       role?: string;
+      documentType?: string;
+      documentNumber?: string;
+      cpf?: string;
+      birthDate?: string | Date | null;
+      address?: string;
+      shirtSize?: string;
+      operationalRole?: string;
     },
   ) {
     return this.officialsService.createFull(body);
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  async findMe(@Req() req: any) {
+    return this.officialsService.findByUserId(req.user.id);
+  }
+
+  @Patch('me')
+  @UseGuards(AuthGuard('jwt'))
+  async updateMe(
+    @Req() req: any,
+    @Body()
+    body: {
+      name?: string;
+      phone?: string;
+      pixKey?: string;
+      documentType?: string;
+      documentNumber?: string;
+      cpf?: string;
+      birthDate?: string | Date | null;
+      address?: string;
+      shirtSize?: string;
+    },
+  ) {
+    return this.officialsService.updateMe(req.user.id, body);
   }
 
   @Patch(':id')
@@ -53,13 +94,21 @@ export class OfficialsController {
       pixKey?: string;
       active?: boolean;
       role?: string;
+      documentType?: string;
+      documentNumber?: string;
+      cpf?: string;
+      birthDate?: string | Date | null;
+      address?: string;
+      shirtSize?: string;
+      operationalRole?: string;
     },
   ) {
     return this.officialsService.update(id, body);
   }
 
   @Get()
-  async findAll() {
-    return this.officialsService.findAll();
+  @UseGuards(AuthGuard('jwt'))
+  async findAll(@Req() req: any) {
+    return this.officialsService.findAll(req.user);
   }
 }

@@ -35,6 +35,15 @@ model Official {
   phone  String?
   pixKey String?
 
+  documentType          String?
+  documentNumber        String?
+  cpf                   String?
+  birthDate             DateTime?
+  address               String?
+  shirtSize             String?
+  operationalRole       String?
+  personalDataUpdatedAt DateTime?
+
   kits             Kit[]
   kitMovementsFrom KitMovement[] @relation("KitMovementFromOfficial")
   kitMovementsTo   KitMovement[] @relation("KitMovementToOfficial")
