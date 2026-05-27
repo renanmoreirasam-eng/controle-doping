@@ -41,6 +41,11 @@ export class MatchesController {
       awayTeam: string;
       matchDate: string;
       missionCode?: string;
+      matchNumber?: string;
+      roundOrPhase?: string;
+      missionOrderFileName?: string;
+      missionOrderFileType?: string;
+      missionOrderFileData?: string;
     },
   ) {
     return this.matchesService.create(body);
@@ -59,6 +64,11 @@ export class MatchesController {
       matchDate?: string;
       status?: MatchStatus;
       missionCode?: string;
+      matchNumber?: string;
+      roundOrPhase?: string;
+      missionOrderFileName?: string | null;
+      missionOrderFileType?: string | null;
+      missionOrderFileData?: string | null;
     },
   ) {
     return this.matchesService.update(

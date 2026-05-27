@@ -61,6 +61,11 @@ export class MatchesService {
     homeTeam: string;
     awayTeam: string;
     missionCode?: string;
+    matchNumber?: string;
+    roundOrPhase?: string;
+    missionOrderFileName?: string;
+    missionOrderFileType?: string;
+    missionOrderFileData?: string;
     matchDate: string;
   }) {
     const parsedMatchDate = new Date(data.matchDate);
@@ -75,7 +80,12 @@ export class MatchesService {
         stadiumId: data.stadiumId,
         homeTeam: data.homeTeam,
         awayTeam: data.awayTeam,
-        missionCode: data.missionCode,
+        missionCode: data.missionCode?.trim() || null,
+        matchNumber: data.matchNumber?.trim() || null,
+        roundOrPhase: data.roundOrPhase?.trim() || null,
+        missionOrderFileName: data.missionOrderFileName?.trim() || null,
+        missionOrderFileType: data.missionOrderFileType?.trim() || null,
+        missionOrderFileData: data.missionOrderFileData?.trim() || null,
         matchDate: parsedMatchDate,
         status: 'SCHEDULED',
       },
@@ -91,6 +101,11 @@ export class MatchesService {
       homeTeam?: string;
       awayTeam?: string;
       missionCode?: string;
+      matchNumber?: string;
+      roundOrPhase?: string;
+      missionOrderFileName?: string | null;
+      missionOrderFileType?: string | null;
+      missionOrderFileData?: string | null;
       matchDate?: string;
       status?: MatchStatus;
     },
@@ -113,7 +128,12 @@ export class MatchesService {
         stadiumId: data.stadiumId,
         homeTeam: data.homeTeam,
         awayTeam: data.awayTeam,
-        missionCode: data.missionCode,
+        missionCode: data.missionCode?.trim() || null,
+        matchNumber: data.matchNumber?.trim() || null,
+        roundOrPhase: data.roundOrPhase?.trim() || null,
+        missionOrderFileName: data.missionOrderFileName?.trim() || null,
+        missionOrderFileType: data.missionOrderFileType?.trim() || null,
+        missionOrderFileData: data.missionOrderFileData?.trim() || null,
         matchDate: parsedMatchDate,
         status: data.status,
       },

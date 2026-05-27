@@ -101,6 +101,12 @@ model Match {
   awayTeam    String
   missionCode String?
 
+  matchNumber          String?
+  roundOrPhase         String?
+  missionOrderFileName String?
+  missionOrderFileType String?
+  missionOrderFileData String? @db.Text
+
   matchDate DateTime
 
   status MatchStatus @default(SCHEDULED)
