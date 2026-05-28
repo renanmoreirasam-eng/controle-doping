@@ -113,6 +113,63 @@ function canAccessMatchOperation(matchDate: string) {
   return todayOnly >= matchOnly;
 }
 
+function dataUrlToBlob(dataUrl: string) {
+  const [header, base64Data] = dataUrl.split(',');
+  const mimeType =
+    header?.match(/data:(.*?);base64/)?.[1] || 'application/octet-stream';
+
+  const binaryString = window.atob(base64Data || '');
+  const bytes = new Uint8Array(binaryString.length);
+
+  for (let index = 0; index < binaryString.length; index += 1) {
+    bytes[index] = binaryString.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
+function isIOSDevice() {
+  if (typeof navigator === 'undefined') return false;
+
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+function downloadDataUrl(dataUrl: string, fileName: string) {
+  const blob = dataUrlToBlob(dataUrl);
+  const blobUrl = window.URL.createObjectURL(blob);
+
+  if (isIOSDevice()) {
+    const openedWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+
+    if (!openedWindow) {
+      window.location.href = blobUrl;
+    }
+
+    window.setTimeout(() => {
+      window.URL.revokeObjectURL(blobUrl);
+    }, 60000);
+
+    return;
+  }
+
+  const link = document.createElement('a');
+
+  link.href = blobUrl;
+  link.download = fileName;
+  link.rel = 'noopener noreferrer';
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(blobUrl);
+  }, 1000);
+}
+
 export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [championships, setChampionships] = useState<Championship[]>([]);
@@ -1128,13 +1185,18 @@ export default function MatchesPage() {
                             Documento atual: <strong>{existingMissionOrderFile.fileName}</strong>
                           </p>
 
-                          <a
-                            href={existingMissionOrderFile.dataUrl}
-                            download={existingMissionOrderFile.fileName || 'ordem-de-missao'}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadDataUrl(
+                                existingMissionOrderFile.dataUrl,
+                                existingMissionOrderFile.fileName || 'ordem-de-missao',
+                              )
+                            }
                             className="inline-flex rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
                           >
                             📄 Baixar documento atual
-                          </a>
+                          </button>
                         </div>
                       ) : null}
 
@@ -1335,13 +1397,18 @@ export default function MatchesPage() {
                     </div>
 
                     {match.missionOrderFileData && (
-                      <a
-                        href={match.missionOrderFileData}
-                        download={match.missionOrderFileName || 'ordem-de-missao'}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadDataUrl(
+                            match.missionOrderFileData!,
+                            match.missionOrderFileName || 'ordem-de-missao',
+                          )
+                        }
                         className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
                       >
-                        📄 Ordem de missão
-                      </a>
+                        📄 Ordem de Missão
+                      </button>
                     )}
                   </div>
 
@@ -1498,13 +1565,18 @@ export default function MatchesPage() {
                           )}
 
                           {match.missionOrderFileData && (
-                            <a
-                              href={match.missionOrderFileData}
-                              download={match.missionOrderFileName || 'ordem-de-missao'}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadDataUrl(
+                                  match.missionOrderFileData!,
+                                  match.missionOrderFileName || 'ordem-de-missao',
+                                )
+                              }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
                             >
-                              📄 Ordem de missão
-                            </a>
+                              📄 Ordem de Missão
+                            </button>
                           )}
 
                           {isAdmin && (
