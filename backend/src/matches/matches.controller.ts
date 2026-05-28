@@ -43,9 +43,15 @@ export class MatchesController {
       missionCode?: string;
       matchNumber?: string;
       roundOrPhase?: string;
-      missionOrderFileName?: string;
-      missionOrderFileType?: string;
-      missionOrderFileData?: string;
+      missionOrderFileName?: string | null;
+      missionOrderFileType?: string | null;
+      missionOrderFileData?: string | null;
+      athleteListFileName?: string | null;
+      athleteListFileType?: string | null;
+      athleteListFileData?: string | null;
+      finalDocumentFileName?: string | null;
+      finalDocumentFileType?: string | null;
+      finalDocumentFileData?: string | null;
     },
   ) {
     return this.matchesService.create(body);
@@ -69,12 +75,48 @@ export class MatchesController {
       missionOrderFileName?: string | null;
       missionOrderFileType?: string | null;
       missionOrderFileData?: string | null;
+      athleteListFileName?: string | null;
+      athleteListFileType?: string | null;
+      athleteListFileData?: string | null;
+      finalDocumentFileName?: string | null;
+      finalDocumentFileType?: string | null;
+      finalDocumentFileData?: string | null;
     },
   ) {
     return this.matchesService.update(
       id,
       body,
     );
+  }
+
+
+  @Patch(':id/mission-code')
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async updateMissionCode(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      missionCode: string;
+    },
+  ) {
+    return this.matchesService.updateMissionCode(id, body.missionCode);
+  }
+
+  @Patch(':id/documents')
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async updateDocuments(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      athleteListFileName?: string | null;
+      athleteListFileType?: string | null;
+      athleteListFileData?: string | null;
+      finalDocumentFileName?: string | null;
+      finalDocumentFileType?: string | null;
+      finalDocumentFileData?: string | null;
+    },
+  ) {
+    return this.matchesService.updateDocuments(id, body);
   }
 
   @Patch(':id/status')

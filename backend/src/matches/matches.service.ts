@@ -63,9 +63,15 @@ export class MatchesService {
     missionCode?: string;
     matchNumber?: string;
     roundOrPhase?: string;
-    missionOrderFileName?: string;
-    missionOrderFileType?: string;
-    missionOrderFileData?: string;
+    missionOrderFileName?: string | null;
+    missionOrderFileType?: string | null;
+    missionOrderFileData?: string | null;
+    athleteListFileName?: string | null;
+    athleteListFileType?: string | null;
+    athleteListFileData?: string | null;
+    finalDocumentFileName?: string | null;
+    finalDocumentFileType?: string | null;
+    finalDocumentFileData?: string | null;
     matchDate: string;
   }) {
     const parsedMatchDate = new Date(data.matchDate);
@@ -83,9 +89,15 @@ export class MatchesService {
         missionCode: data.missionCode?.trim() || null,
         matchNumber: data.matchNumber?.trim() || null,
         roundOrPhase: data.roundOrPhase?.trim() || null,
-        missionOrderFileName: data.missionOrderFileName?.trim() || null,
-        missionOrderFileType: data.missionOrderFileType?.trim() || null,
-        missionOrderFileData: data.missionOrderFileData?.trim() || null,
+        missionOrderFileName: data.missionOrderFileName || null,
+        missionOrderFileType: data.missionOrderFileType || null,
+        missionOrderFileData: data.missionOrderFileData || null,
+        athleteListFileName: data.athleteListFileName || null,
+        athleteListFileType: data.athleteListFileType || null,
+        athleteListFileData: data.athleteListFileData || null,
+        finalDocumentFileName: data.finalDocumentFileName || null,
+        finalDocumentFileType: data.finalDocumentFileType || null,
+        finalDocumentFileData: data.finalDocumentFileData || null,
         matchDate: parsedMatchDate,
         status: 'SCHEDULED',
       },
@@ -106,6 +118,12 @@ export class MatchesService {
       missionOrderFileName?: string | null;
       missionOrderFileType?: string | null;
       missionOrderFileData?: string | null;
+      athleteListFileName?: string | null;
+      athleteListFileType?: string | null;
+      athleteListFileData?: string | null;
+      finalDocumentFileName?: string | null;
+      finalDocumentFileType?: string | null;
+      finalDocumentFileData?: string | null;
       matchDate?: string;
       status?: MatchStatus;
     },
@@ -128,14 +146,55 @@ export class MatchesService {
         stadiumId: data.stadiumId,
         homeTeam: data.homeTeam,
         awayTeam: data.awayTeam,
-        missionCode: data.missionCode?.trim() || null,
-        matchNumber: data.matchNumber?.trim() || null,
-        roundOrPhase: data.roundOrPhase?.trim() || null,
-        missionOrderFileName: data.missionOrderFileName?.trim() || null,
-        missionOrderFileType: data.missionOrderFileType?.trim() || null,
-        missionOrderFileData: data.missionOrderFileData?.trim() || null,
+        missionCode: data.missionCode !== undefined ? data.missionCode?.trim() || null : undefined,
+        matchNumber: data.matchNumber !== undefined ? data.matchNumber?.trim() || null : undefined,
+        roundOrPhase: data.roundOrPhase !== undefined ? data.roundOrPhase?.trim() || null : undefined,
+        missionOrderFileName: data.missionOrderFileName !== undefined ? data.missionOrderFileName || null : undefined,
+        missionOrderFileType: data.missionOrderFileType !== undefined ? data.missionOrderFileType || null : undefined,
+        missionOrderFileData: data.missionOrderFileData !== undefined ? data.missionOrderFileData || null : undefined,
+        athleteListFileName: data.athleteListFileName !== undefined ? data.athleteListFileName || null : undefined,
+        athleteListFileType: data.athleteListFileType !== undefined ? data.athleteListFileType || null : undefined,
+        athleteListFileData: data.athleteListFileData !== undefined ? data.athleteListFileData || null : undefined,
+        finalDocumentFileName: data.finalDocumentFileName !== undefined ? data.finalDocumentFileName || null : undefined,
+        finalDocumentFileType: data.finalDocumentFileType !== undefined ? data.finalDocumentFileType || null : undefined,
+        finalDocumentFileData: data.finalDocumentFileData !== undefined ? data.finalDocumentFileData || null : undefined,
         matchDate: parsedMatchDate,
         status: data.status,
+      },
+      include: this.includeRelations,
+    });
+  }
+
+  async updateMissionCode(id: string, missionCode: string) {
+    return this.prisma.match.update({
+      where: { id },
+      data: {
+        missionCode: missionCode?.trim() || null,
+      },
+      include: this.includeRelations,
+    });
+  }
+
+  async updateDocuments(
+    id: string,
+    data: {
+      athleteListFileName?: string | null;
+      athleteListFileType?: string | null;
+      athleteListFileData?: string | null;
+      finalDocumentFileName?: string | null;
+      finalDocumentFileType?: string | null;
+      finalDocumentFileData?: string | null;
+    },
+  ) {
+    return this.prisma.match.update({
+      where: { id },
+      data: {
+        athleteListFileName: data.athleteListFileName,
+        athleteListFileType: data.athleteListFileType,
+        athleteListFileData: data.athleteListFileData,
+        finalDocumentFileName: data.finalDocumentFileName,
+        finalDocumentFileType: data.finalDocumentFileType,
+        finalDocumentFileData: data.finalDocumentFileData,
       },
       include: this.includeRelations,
     });

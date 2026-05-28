@@ -116,6 +116,14 @@ model Match {
   missionOrderFileType String?
   missionOrderFileData String? @db.Text
 
+  athleteListFileName String?
+  athleteListFileType String?
+  athleteListFileData String? @db.Text
+
+  finalDocumentFileName String?
+  finalDocumentFileType String?
+  finalDocumentFileData String? @db.Text
+
   matchDate DateTime
 
   status MatchStatus @default(SCHEDULED)

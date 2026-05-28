@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Sidebar } from '../../../../components/Sidebar';
+import { ConfirmModal } from '../../../../components/ConfirmModal';
 import { api } from '../../../../services/api';
 import Link from 'next/link';
 
@@ -15,6 +16,12 @@ type Match = {
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
   missionCode?: string;
+  athleteListFileName?: string | null;
+  athleteListFileType?: string | null;
+  athleteListFileData?: string | null;
+  finalDocumentFileName?: string | null;
+  finalDocumentFileType?: string | null;
+  finalDocumentFileData?: string | null;
 };
 
 type Scale = {
@@ -164,6 +171,42 @@ const defaultRoomItems: RoomInspectionItem[] = [
   { label: 'Sala limpa e organizada', status: 'CONFORME' },
 ];
 
+
+type ModalVariant = 'danger' | 'success' | 'warning' | 'default';
+
+type ModalState = {
+  open: boolean;
+  title: string;
+  message: string;
+  variant: ModalVariant;
+  confirmText: string;
+  cancelText?: string;
+  onConfirm?: () => void | Promise<void>;
+};
+
+const initialModalState: ModalState = {
+  open: false,
+  title: '',
+  message: '',
+  variant: 'default',
+  confirmText: 'Fechar',
+};
+
+function getErrorMessage(error: any, fallback: string) {
+  const message = error?.response?.data?.message || error?.message || fallback;
+  return Array.isArray(message) ? message.join(' ') : String(message);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function MatchDetailsPage() {
   const params = useParams();
   const matchId = params.id as string;
@@ -214,6 +257,52 @@ export default function MatchDetailsPage() {
   const [roomItems, setRoomItems] = useState<RoomInspectionItem[]>(defaultRoomItems);
   const [roomNotes, setRoomNotes] = useState('');
   const [roomPhotos, setRoomPhotos] = useState<RoomInspectionPhoto[]>([]);
+
+  const [missionCodeInput, setMissionCodeInput] = useState('');
+  const [savingMissionCode, setSavingMissionCode] = useState(false);
+  const [savingAthleteListFile, setSavingAthleteListFile] = useState(false);
+  const [savingFinalDocumentFile, setSavingFinalDocumentFile] = useState(false);
+  const [modal, setModal] = useState<ModalState>(initialModalState);
+
+  function closeModal() {
+    setModal(initialModalState);
+  }
+
+  function showMessage(
+    title: string,
+    message: string,
+    variant: ModalVariant = 'default',
+  ) {
+    setModal({
+      open: true,
+      title,
+      message,
+      variant,
+      confirmText: 'Fechar',
+      onConfirm: closeModal,
+    });
+  }
+
+  function showConfirm(params: {
+    title: string;
+    message: string;
+    variant?: ModalVariant;
+    confirmText?: string;
+    onConfirm: () => void | Promise<void>;
+  }) {
+    setModal({
+      open: true,
+      title: params.title,
+      message: params.message,
+      variant: params.variant || 'warning',
+      confirmText: params.confirmText || 'Confirmar',
+      cancelText: 'Cancelar',
+      onConfirm: async () => {
+        closeModal();
+        await params.onConfirm();
+      },
+    });
+  }
 
   async function loadMatch() {
     const response = await api.get(`/matches/${matchId}`);
@@ -285,6 +374,10 @@ export default function MatchDetailsPage() {
 
     return () => clearInterval(interval);
   }, [running]);
+
+  useEffect(() => {
+    setMissionCodeInput(match?.missionCode || '');
+  }, [match?.missionCode]);
   
   const hasRoomInspection = roomInspections.length > 0;
   const isControlDone = match?.status === 'CONTROL_DONE';
@@ -318,11 +411,21 @@ export default function MatchDetailsPage() {
     isCheckedIn &&
     !hasRoomInspection;
 
+  const hasMissionCode = Boolean(match?.missionCode?.trim());
+
+  const canFillMissionCode =
+    !!match &&
+    !isControlDone &&
+    isCheckedIn &&
+    hasRoomInspection &&
+    !hasMissionCode;
+
   const canStartMatch =
     !!match &&
     !isControlDone &&
     isCheckedIn &&
     hasRoomInspection &&
+    hasMissionCode &&
     match.status !== 'IN_PROGRESS';
 
   const canFinishControl =
@@ -331,6 +434,15 @@ export default function MatchDetailsPage() {
     isMatchInProgress &&
     hasDrawDone &&
     hasMatchKits;
+
+  const canUploadAthleteListFile =
+    !!match &&
+    !isControlDone &&
+    isMatchInProgress;
+
+  const canUploadFinalDocumentFile =
+    !!match &&
+    isControlDone;
 
   const canShowOperationalSections =
     isMatchInProgress || hasDrawDone || isControlDone;
@@ -492,7 +604,7 @@ export default function MatchDetailsPage() {
     if (isControlDone) return;
 
     if (selectedKitIds.length === 0) {
-      alert('Selecione pelo menos um kit utilizado no controle.');
+      showMessage('Selecione um kit', 'Selecione pelo menos um kit utilizado no controle.', 'warning');
       return;
     }
 
@@ -502,9 +614,7 @@ export default function MatchDetailsPage() {
     );
 
     if (invalidSelectedKitIds.length > 0) {
-      alert(
-        'A seleção possui kit que já foi utilizado ou não está mais disponível. Atualize a página e selecione novamente.',
-      );
+      showMessage('Kit indisponível', 'A seleção possui kit que já foi utilizado ou não está mais disponível. Atualize a página e selecione novamente.', 'warning');
       await loadMyKits();
       await loadMatchKits();
       return;
@@ -520,13 +630,9 @@ export default function MatchDetailsPage() {
       await loadMyKits();
       await loadMatchKits();
 
-      alert('Kits utilizados registrados com sucesso!');
+      showMessage('Kits registrados', 'Kits utilizados registrados com sucesso!', 'success');
     } catch (error: any) {
-      alert(
-        error.response?.data?.message ||
-          error.message ||
-          'Erro ao registrar kits utilizados.',
-      );
+      showMessage('Erro ao registrar kits', getErrorMessage(error, 'Erro ao registrar kits utilizados.'), 'danger');
     } finally {
       setSavingKits(false);
     }
@@ -535,26 +641,121 @@ export default function MatchDetailsPage() {
   async function handleRemoveMatchKit(kitId: string) {
     if (isControlDone) return;
 
-    if (!confirm('Deseja remover este registro de kit utilizado da partida?')) return;
+    showConfirm({
+      title: 'Remover kit utilizado',
+      message: 'Deseja remover este registro de kit utilizado da partida?',
+      variant: 'danger',
+      confirmText: 'Remover',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/inventory/matches/${matchId}/kits/${kitId}`);
+
+          await loadMyKits();
+          await loadMatchKits();
+
+          showMessage('Kit removido', 'Registro de kit utilizado removido com sucesso.', 'success');
+        } catch (error: any) {
+          showMessage('Erro ao remover kit', getErrorMessage(error, 'Erro ao remover kit utilizado da partida.'), 'danger');
+        }
+      },
+    });
+  }
+
+  async function handleSaveMissionCode() {
+    if (isControlDone) return;
+
+    const missionCode = missionCodeInput.trim();
+
+    if (!missionCode) {
+      showMessage('Código obrigatório', 'Informe o código da missão para continuar.', 'warning');
+      return;
+    }
 
     try {
-      await api.delete(`/inventory/matches/${matchId}/kits/${kitId}`);
+      setSavingMissionCode(true);
 
-      await loadMyKits();
-      await loadMatchKits();
+      await api.patch(`/matches/${matchId}/mission-code`, {
+        missionCode,
+      });
+
+      await loadMatch();
+
+      showMessage('Código salvo', 'Código da missão salvo com sucesso!', 'success');
     } catch (error: any) {
-      alert(
-        error.response?.data?.message ||
-          error.message ||
-          'Erro ao remover kit utilizado da partida.',
+      showMessage('Erro ao salvar código', getErrorMessage(error, 'Erro ao salvar código da missão.'), 'danger');
+    } finally {
+      setSavingMissionCode(false);
+    }
+  }
+
+  async function handleUploadMatchDocument(
+    type: 'athleteList' | 'finalDocument',
+    files: FileList | null,
+  ) {
+    const file = files?.[0];
+
+    if (!file) return;
+
+    const maxSizeInMb = 10;
+    const maxSizeInBytes = maxSizeInMb * 1024 * 1024;
+
+    if (file.size > maxSizeInBytes) {
+      showMessage(
+        'Arquivo muito grande',
+        `Selecione um arquivo de até ${maxSizeInMb} MB.`,
+        'warning',
       );
+      return;
+    }
+
+    try {
+      if (type === 'athleteList') {
+        setSavingAthleteListFile(true);
+      } else {
+        setSavingFinalDocumentFile(true);
+      }
+
+      const fileData = await readFileAsDataUrl(file);
+
+      await api.patch(`/matches/${matchId}/documents`,
+        type === 'athleteList'
+          ? {
+              athleteListFileName: file.name,
+              athleteListFileType: file.type || 'application/octet-stream',
+              athleteListFileData: fileData,
+            }
+          : {
+              finalDocumentFileName: file.name,
+              finalDocumentFileType: file.type || 'application/octet-stream',
+              finalDocumentFileData: fileData,
+            },
+      );
+
+      await loadMatch();
+
+      showMessage(
+        'Documento salvo',
+        type === 'athleteList'
+          ? 'Relação de atletas salva com sucesso!'
+          : 'Documento final do jogo salvo com sucesso!',
+        'success',
+      );
+    } catch (error: any) {
+      showMessage(
+        'Erro ao salvar documento',
+        getErrorMessage(error, 'Erro ao salvar documento do jogo.'),
+        'danger',
+      );
+    } finally {
+      setSavingAthleteListFile(false);
+      setSavingFinalDocumentFile(false);
     }
   }
 
   async function updateMatchStatus(status: string) {
     try {
       if (status === 'CONTROL_DONE' && matchKits.length === 0) {
-        alert('Antes de finalizar o controle, registre pelo menos um kit utilizado na partida.');
+        showMessage('Kits obrigatórios', 'Antes de finalizar o controle, registre pelo menos um kit utilizado na partida.', 'warning');
         return;
       }
 
@@ -580,13 +781,9 @@ export default function MatchDetailsPage() {
       await loadMyKits();
       await loadMatchKits();
 
-      alert('Status do jogo atualizado com sucesso!');
+      showMessage('Status atualizado', 'Status do jogo atualizado com sucesso!', 'success');
     } catch (error: any) {
-      alert(
-        error.message ||
-          error.response?.data?.message ||
-          'Erro ao atualizar status do jogo',
-      );
+      showMessage('Erro ao atualizar status', getErrorMessage(error, 'Erro ao atualizar status do jogo'), 'danger');
     }
   }
 
@@ -732,7 +929,7 @@ export default function MatchDetailsPage() {
 
   async function saveRoomInspection() {
     if (isControlDone) {
-      alert('Controle já realizado. Não é possível alterar informações.');
+      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível alterar informações.', 'warning');
       return;
     }
 
@@ -751,33 +948,40 @@ export default function MatchDetailsPage() {
 
       await loadRoomInspections();
 
-      alert('Inspeção da sala salva com sucesso!');
+      showMessage('Inspeção salva', 'Inspeção da sala salva com sucesso!', 'success');
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao salvar inspeção da sala');
+      showMessage('Erro ao salvar inspeção', getErrorMessage(error, 'Erro ao salvar inspeção da sala'), 'danger');
     }
   }
 
   async function deleteRoomInspection(id: string) {
     if (isControlDone) {
-      alert('Controle já realizado. Não é possível excluir inspeções.');
+      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível excluir inspeções.', 'warning');
       return;
     }
 
-    if (!confirm('Deseja excluir esta inspeção?')) return;
-
-    try {
-      await api.delete(`/room-inspections/${id}`);
-      await loadRoomInspections();
-    } catch (error) {
-      alert('Erro ao excluir inspeção');
-    }
+    showConfirm({
+      title: 'Excluir inspeção',
+      message: 'Deseja excluir esta inspeção?',
+      variant: 'danger',
+      confirmText: 'Excluir',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/room-inspections/${id}`);
+          await loadRoomInspections();
+          showMessage('Inspeção excluída', 'Inspeção excluída com sucesso.', 'success');
+        } catch (error: any) {
+          showMessage('Erro ao excluir inspeção', getErrorMessage(error, 'Erro ao excluir inspeção'), 'danger');
+        }
+      },
+    });
   }
 
   function addPlayer() {
     if (isControlDone) return;
 
     if (!playerName || !playerNumber) {
-      alert('Informe nome e número do atleta');
+      showMessage('Dados obrigatórios', 'Informe nome e número do atleta', 'warning');
       return;
     }
 
@@ -805,12 +1009,12 @@ export default function MatchDetailsPage() {
 
   async function saveDraw() {
     if (isControlDone) {
-      alert('Controle já realizado. Não é possível alterar informações.');
+      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível alterar informações.', 'warning');
       return;
     }
 
     if (hasDrawDone) {
-      alert('Sorteio já realizado para este jogo.');
+      showMessage('Sorteio já realizado', 'Sorteio já realizado para este jogo.', 'warning');
       return;
     }
 
@@ -825,7 +1029,7 @@ export default function MatchDetailsPage() {
     const awayReserveName = drawForm.awayReserveName.trim();
 
     if (!homeExamNumber || !homeExamName || !awayExamNumber || !awayExamName) {
-      alert('Informe o número e o nome do Principal Exame de cada time.');
+      showMessage('Dados obrigatórios', 'Informe o número e o nome do Principal Exame de cada time.', 'warning');
       return;
     }
 
@@ -833,7 +1037,7 @@ export default function MatchDetailsPage() {
       (homeReserveNumber && !homeReserveName) ||
       (!homeReserveNumber && homeReserveName)
     ) {
-      alert('Para o Reserva do mandante, informe número e nome ou deixe ambos em branco.');
+      showMessage('Reserva do mandante', 'Para o Reserva do mandante, informe número e nome ou deixe ambos em branco.', 'warning');
       return;
     }
 
@@ -841,7 +1045,7 @@ export default function MatchDetailsPage() {
       (awayReserveNumber && !awayReserveName) ||
       (!awayReserveNumber && awayReserveName)
     ) {
-      alert('Para o Reserva do visitante, informe número e nome ou deixe ambos em branco.');
+      showMessage('Reserva do visitante', 'Para o Reserva do visitante, informe número e nome ou deixe ambos em branco.', 'warning');
       return;
     }
 
@@ -904,15 +1108,15 @@ export default function MatchDetailsPage() {
       await loadDraws();
       await loadOperationalLogs();
 
-      alert('Sorteio realizado com sucesso!');
+      showMessage('Sorteio salvo', 'Sorteio realizado com sucesso!', 'success');
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao salvar sorteio dos atletas');
+      showMessage('Erro ao salvar sorteio', getErrorMessage(error, 'Erro ao salvar sorteio dos atletas'), 'danger');
     }
   }
 
   async function saveSubstitutions() {
     if (isControlDone) {
-      alert('Controle já realizado. Não é possível alterar informações.');
+      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível alterar informações.', 'warning');
       return;
     }
 
@@ -932,11 +1136,7 @@ export default function MatchDetailsPage() {
     );
 
     if (incompleteRow) {
-      alert(
-        `Preencha Nº saiu e Nº entrou na substituição ${incompleteRow.index + 1} de ${getTeamName(
-          incompleteRow.team,
-        )}.`,
-      );
+      showMessage('Substituição incompleta', `Preencha Nº saiu e Nº entrou na substituição ${incompleteRow.index + 1} de ${getTeamName(incompleteRow.team)}.`, 'warning');
       return;
     }
 
@@ -961,26 +1161,33 @@ export default function MatchDetailsPage() {
 
       await loadSubstitutions();
 
-      alert('Substituições salvas com sucesso!');
+      showMessage('Substituições salvas', 'Substituições salvas com sucesso!', 'success');
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Erro ao salvar substituições');
+      showMessage('Erro ao salvar substituições', getErrorMessage(error, 'Erro ao salvar substituições'), 'danger');
     }
   }
 
   async function deleteSubstitution(id: string) {
     if (isControlDone) {
-      alert('Controle já realizado. Não é possível excluir substituições.');
+      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível excluir substituições.', 'warning');
       return;
     }
 
-    if (!confirm('Deseja remover esta substituição?')) return;
-
-    try {
-      await api.delete(`/substitutions/${id}`);
-      await loadSubstitutions();
-    } catch (error) {
-      alert('Erro ao remover substituição');
-    }
+    showConfirm({
+      title: 'Remover substituição',
+      message: 'Deseja remover esta substituição?',
+      variant: 'danger',
+      confirmText: 'Remover',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/substitutions/${id}`);
+          await loadSubstitutions();
+          showMessage('Substituição removida', 'Substituição removida com sucesso.', 'success');
+        } catch (error: any) {
+          showMessage('Erro ao remover substituição', getErrorMessage(error, 'Erro ao remover substituição'), 'danger');
+        }
+      },
+    });
   }
 
   function formatDateOnly(date: string) {
@@ -1178,6 +1385,86 @@ function formatTimeOnly(date: string) {
 
                 <div
                   className={`rounded-2xl border p-4 ${
+                    hasMissionCode
+                      ? 'bg-green-50 border-green-200'
+                      : canFillMissionCode
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        3. Código da missão
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Informe o código da missão antes de marcar o jogo em andamento.
+                      </p>
+                    </div>
+
+                    {hasMissionCode ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Informado
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {hasMissionCode && (
+                    <div className="mt-4 rounded-2xl border border-green-100 bg-white px-4 py-3">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Código registrado
+                      </p>
+
+                      <p className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
+                        {match.missionCode}
+                      </p>
+                    </div>
+                  )}
+
+                  {canFillMissionCode && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Código da missão *
+                      </label>
+
+                      <input
+                        value={missionCodeInput}
+                        onChange={(event) => setMissionCodeInput(event.target.value)}
+                        placeholder="Informe o código da missão"
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleSaveMissionCode}
+                        disabled={savingMissionCode || !missionCodeInput.trim()}
+                        className="mt-4 w-full rounded-2xl bg-[var(--cdb-blue)] py-3 font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingMissionCode ? 'Salvando código...' : 'Salvar código da missão'}
+                      </button>
+                    </div>
+                  )}
+
+                  {!isCheckedIn && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando check-in no estádio.
+                    </p>
+                  )}
+
+                  {isCheckedIn && !hasRoomInspection && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando inspeção da sala para liberar o código da missão.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
                     isMatchInProgress
                       ? 'bg-green-50 border-green-200'
                       : canStartMatch
@@ -1188,7 +1475,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        3. Jogo em andamento
+                        4. Jogo em andamento
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1227,6 +1514,12 @@ function formatTimeOnly(date: string) {
                       Aguardando inspeção da sala para liberar o jogo em andamento.
                     </p>
                   )}
+
+                  {isCheckedIn && hasRoomInspection && !hasMissionCode && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando código da missão para liberar o jogo em andamento.
+                    </p>
+                  )}
                 </div>
 
                 <div
@@ -1241,7 +1534,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        4. Sorteio realizado
+                        5. Sorteio realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1287,7 +1580,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        5. Kits utilizados no controle
+                        6. Kits utilizados no controle
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1405,7 +1698,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        6. Controle realizado
+                        7. Controle realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1434,6 +1727,89 @@ function formatTimeOnly(date: string) {
                   {!canFinishControl && !isControlDone && (
                     <p className="mt-4 text-xs text-slate-500">
                       Aguardando jogo em andamento, sorteio realizado e kits utilizados registrados.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    match.finalDocumentFileName
+                      ? 'bg-green-50 border-green-200'
+                      : isControlDone
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        8. Documentos do jogo
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Após finalizar o controle, envie o documento final do jogo para consulta posterior.
+                      </p>
+                    </div>
+
+                    {match.finalDocumentFileName ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Enviado
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {match.finalDocumentFileName && match.finalDocumentFileData && (
+                    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-green-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                          Documento enviado
+                        </p>
+
+                        <p className="mt-1 text-sm font-black text-slate-900">
+                          {match.finalDocumentFileName}
+                        </p>
+                      </div>
+
+                      <a
+                        href={match.finalDocumentFileData}
+                        download={match.finalDocumentFileName}
+                        className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+                      >
+                        Baixar documento
+                      </a>
+                    </div>
+                  )}
+
+                  {canUploadFinalDocumentFile && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Documento final do jogo
+                      </label>
+
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        disabled={savingFinalDocumentFile}
+                        onChange={(event) => {
+                          handleUploadMatchDocument('finalDocument', event.currentTarget.files);
+                          event.currentTarget.value = '';
+                        }}
+                        className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        Formatos aceitos: PDF, JPG ou PNG. Tamanho máximo: 10 MB.
+                      </p>
+                    </div>
+                  )}
+
+                  {!isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      O upload dos documentos finais será liberado após o controle realizado.
                     </p>
                   )}
                 </div>
@@ -1542,6 +1918,63 @@ function formatTimeOnly(date: string) {
       >
         {getStatusLabel(match.status)}
       </span>
+    </div>
+
+    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-slate-500 text-sm">
+            Relação de atletas
+          </p>
+
+          <strong className="text-lg">
+            {match.athleteListFileName || 'Não enviada'}
+          </strong>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Foto ou arquivo da relação de atletas vinculada ao sorteio.
+          </p>
+        </div>
+
+        {match.athleteListFileName && match.athleteListFileData && (
+          <a
+            href={match.athleteListFileData}
+            download={match.athleteListFileName}
+            className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+          >
+            Baixar relação
+          </a>
+        )}
+      </div>
+
+    </div>
+
+    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-slate-500 text-sm">
+            Documento final do jogo
+          </p>
+
+          <strong className="text-lg">
+            {match.finalDocumentFileName || 'Não enviado'}
+          </strong>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Documento final anexado após o controle realizado.
+          </p>
+        </div>
+
+        {match.finalDocumentFileName && match.finalDocumentFileData && (
+          <a
+            href={match.finalDocumentFileData}
+            download={match.finalDocumentFileName}
+            className="inline-flex w-fit items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+          >
+            Baixar documento
+          </a>
+        )}
+      </div>
     </div>
 
     <div className={`rounded-3xl border p-5 md:col-span-2 ${
@@ -2074,6 +2507,45 @@ function formatTimeOnly(date: string) {
                     </div>
                   </div>
   
+                  <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                          Relação de atletas
+                        </p>
+
+                        <h3 className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
+                          Documento do sorteio
+                        </h3>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          Envie uma foto ou PDF da relação de atletas para guardar junto ao jogo.
+                        </p>
+                      </div>
+
+                      {match.athleteListFileName && match.athleteListFileData && (
+                        <a
+                          href={match.athleteListFileData}
+                          download={match.athleteListFileName}
+                          className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                        >
+                          Baixar relação
+                        </a>
+                      )}
+                    </div>
+
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      disabled={savingAthleteListFile || isControlDone}
+                      onChange={(event) => {
+                        handleUploadMatchDocument('athleteList', event.currentTarget.files);
+                        event.currentTarget.value = '';
+                      }}
+                      className="mt-4 block w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </div>
+
                   <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <p className="text-sm text-slate-500">
                       Após salvar, o sorteio será exibido em Informações da partida e esta área ficará oculta.
@@ -2090,40 +2562,30 @@ function formatTimeOnly(date: string) {
                 </div>
               </details>
             )}
-            {hasDrawDone && (
-            <details className="group overflow-hidden rounded-3xl border border-green-200 bg-green-50 shadow-sm">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                  <div>
-                    <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                      Sorteio realizado
-                    </h2>
-  
-                    <p className="text-sm text-slate-500 mt-1">
-                      Atletas disponíveis em Informações da partida.
-                    </p>
-                  </div>
-  
-                  <div className="flex items-center gap-3">
-  
-                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                      ⌄
-                    </span>
-                  </div>
-                </summary>
-  
-                <div className="px-5 pb-5 lg:px-8 lg:pb-8">
-                  <p className="text-green-700">
-                    Os atletas sorteados estão disponíveis em Informações da partida.
-                  </p>
-                </div>
-              </details>
-            )}
               </>
             )}
           </div>
 
                   </section>
       </div>
+
+      <ConfirmModal
+        open={modal.open}
+        title={modal.title}
+        message={modal.message}
+        variant={modal.variant}
+        confirmText={modal.confirmText}
+        cancelText={modal.cancelText}
+        onCancel={closeModal}
+        onConfirm={async () => {
+          if (modal.onConfirm) {
+            await modal.onConfirm();
+            return;
+          }
+
+          closeModal();
+        }}
+      />
     </main>
   );
 }
