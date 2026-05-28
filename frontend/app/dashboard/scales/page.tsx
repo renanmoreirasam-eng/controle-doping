@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Sidebar } from "../../../components/Sidebar";
+import { ConfirmModal } from "../../../components/ConfirmModal";
 import { api } from "../../../services/api";
 import { getUser } from "../../../services/auth";
 
@@ -11,6 +12,7 @@ type Match = {
   homeTeam: string;
   awayTeam: string;
   matchDate: string;
+  status: string;
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
 };
@@ -41,6 +43,31 @@ type ScaleGroup = {
   assistant?: Scale;
 };
 
+type ModalVariant = "danger" | "success" | "warning" | "default";
+
+type ModalState = {
+  open: boolean;
+  title: string;
+  message: string;
+  variant: ModalVariant;
+  confirmText: string;
+  cancelText?: string;
+  onConfirm?: () => void | Promise<void>;
+};
+
+const initialModalState: ModalState = {
+  open: false,
+  title: "",
+  message: "",
+  variant: "default",
+  confirmText: "Fechar",
+};
+
+function getErrorMessage(error: any, fallback: string) {
+  const message = error?.response?.data?.message || error?.message || fallback;
+  return Array.isArray(message) ? message.join(" ") : String(message);
+}
+
 function ScalesPageContent() {
   const searchParams = useSearchParams();
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -57,6 +84,7 @@ function ScalesPageContent() {
   const [matchId, setMatchId] = useState("");
   const [dcoOfficialId, setDcoOfficialId] = useState("");
   const [assistantOfficialId, setAssistantOfficialId] = useState("");
+  const [modal, setModal] = useState<ModalState>(initialModalState);
 
   const user = getUser();
 
@@ -67,6 +95,46 @@ function ScalesPageContent() {
   const loggedUserEmail = user?.email || user?.user?.email;
 
   const isAdmin = userRole === "ADMIN";
+
+  function closeModal() {
+    setModal(initialModalState);
+  }
+
+  function showMessage(
+    title: string,
+    message: string,
+    variant: ModalVariant = "default",
+  ) {
+    setModal({
+      open: true,
+      title,
+      message,
+      variant,
+      confirmText: "Fechar",
+      onConfirm: closeModal,
+    });
+  }
+
+  function showConfirm(params: {
+    title: string;
+    message: string;
+    variant?: ModalVariant;
+    confirmText?: string;
+    onConfirm: () => void | Promise<void>;
+  }) {
+    setModal({
+      open: true,
+      title: params.title,
+      message: params.message,
+      variant: params.variant || "warning",
+      confirmText: params.confirmText || "Confirmar",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        closeModal();
+        await params.onConfirm();
+      },
+    });
+  }
 
   async function loadScales() {
     const response = await api.get("/match-officials");
@@ -198,19 +266,24 @@ function ScalesPageContent() {
   });
 
   const availableMatches = useMemo(() => {
-    return matches.filter((match) => {
-      const group = groupedScales.find((item) => item.match.id === match.id);
+    return matches
+      .filter((match) => {
+        if (editingMatchId === match.id) {
+          return true;
+        }
 
-      if (editingMatchId === match.id) {
-        return true;
-      }
+        if (match.status === "CONTROL_DONE" || match.status === "CANCELED") {
+          return false;
+        }
 
-      if (!group) {
-        return true;
-      }
+        const group = groupedScales.find((item) => item.match.id === match.id);
 
-      return !group.dco || !group.assistant;
-    });
+        return !group;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime(),
+      );
   }, [matches, groupedScales, editingMatchId]);
 
   const completeScales = groupedScales.filter(
@@ -276,17 +349,25 @@ function ScalesPageContent() {
 
   async function saveScales() {
     if (!isAdmin) {
-      alert("Você não tem permissão para editar escalas.");
+      showMessage(
+        "Permissão negada",
+        "Você não tem permissão para editar escalas.",
+        "warning",
+      );
       return;
     }
 
     if (!matchId) {
-      alert("Selecione um jogo");
+      showMessage("Jogo obrigatório", "Selecione um jogo.", "warning");
       return;
     }
 
     if (!dcoOfficialId && !assistantOfficialId) {
-      alert("Selecione pelo menos um oficial");
+      showMessage(
+        "Oficial obrigatório",
+        "Selecione pelo menos um oficial.",
+        "warning",
+      );
       return;
     }
 
@@ -295,12 +376,25 @@ function ScalesPageContent() {
       assistantOfficialId &&
       dcoOfficialId === assistantOfficialId
     ) {
-      alert("O DCO e o Assistente não podem ser o mesmo oficial");
+      showMessage(
+        "Oficiais inválidos",
+        "O DCO e o Assistente não podem ser o mesmo oficial.",
+        "warning",
+      );
       return;
     }
 
     try {
       const group = groupedScales.find((item) => item.match.id === matchId);
+
+      if (group && !editingMatchId) {
+        showMessage(
+          "Jogo já escalado",
+          "Este jogo já possui escala cadastrada. Use a opção Editar na lista de escalas.",
+          "warning",
+        );
+        return;
+      }
 
       if (group?.dco && group.dco.officialId !== dcoOfficialId) {
         await api.delete(`/match-officials/${group.dco.id}`);
@@ -327,9 +421,13 @@ function ScalesPageContent() {
       clearForm();
       await loadScales();
 
-      alert("Escala salva com sucesso!");
+      showMessage("Escala salva", "Escala salva com sucesso!", "success");
     } catch (error: any) {
-      alert(error.response?.data?.message || "Erro ao salvar escala");
+      showMessage(
+        "Erro ao salvar escala",
+        getErrorMessage(error, "Erro ao salvar escala."),
+        "danger",
+      );
     }
   }
 
@@ -337,112 +435,183 @@ function ScalesPageContent() {
     if (!scale) return;
 
     if (scale.confirmed !== null) {
-      alert("Esta escala já possui uma resposta registrada.");
+      showMessage(
+        "Resposta já registrada",
+        "Esta escala já possui uma resposta registrada.",
+        "warning",
+      );
       return;
     }
 
     const officialName = scale.official?.user?.name || "este oficial";
     const roleLabel = scale.role === "DCO" ? "DCO" : "Assistente";
 
-    if (
-      !confirm(
-        `Deseja confirmar a escala como ${roleLabel} para ${officialName}?`,
-      )
-    ) {
-      return;
-    }
-
-    await api.patch(`/match-officials/${scale.id}/confirm`);
-    await loadScales();
+    showConfirm({
+      title: "Confirmar escala",
+      message: `Deseja confirmar a escala como ${roleLabel} para ${officialName}?`,
+      variant: "success",
+      confirmText: "Confirmar",
+      onConfirm: async () => {
+        try {
+          await api.patch(`/match-officials/${scale.id}/confirm`);
+          await loadScales();
+          showMessage(
+            "Escala confirmada",
+            "Sua confirmação foi registrada com sucesso.",
+            "success",
+          );
+        } catch (error: any) {
+          showMessage(
+            "Erro ao confirmar escala",
+            getErrorMessage(error, "Erro ao confirmar escala."),
+            "danger",
+          );
+        }
+      },
+    });
   }
 
   async function refuseScale(scale?: Scale) {
     if (!scale) return;
 
     if (scale.confirmed !== null) {
-      alert("Esta escala já possui uma resposta registrada.");
+      showMessage(
+        "Resposta já registrada",
+        "Esta escala já possui uma resposta registrada.",
+        "warning",
+      );
       return;
     }
 
     const officialName = scale.official?.user?.name || "este oficial";
     const roleLabel = scale.role === "DCO" ? "DCO" : "Assistente";
 
-    if (
-      !confirm(
-        `Deseja recusar a escala como ${roleLabel} para ${officialName}?`,
-      )
-    ) {
-      return;
-    }
-
-    await api.patch(`/match-officials/${scale.id}/refuse`);
-    await loadScales();
+    showConfirm({
+      title: "Recusar escala",
+      message: `Deseja recusar a escala como ${roleLabel} para ${officialName}?`,
+      variant: "warning",
+      confirmText: "Recusar",
+      onConfirm: async () => {
+        try {
+          await api.patch(`/match-officials/${scale.id}/refuse`);
+          await loadScales();
+          showMessage(
+            "Escala recusada",
+            "Sua recusa foi registrada com sucesso.",
+            "success",
+          );
+        } catch (error: any) {
+          showMessage(
+            "Erro ao recusar escala",
+            getErrorMessage(error, "Erro ao recusar escala."),
+            "danger",
+          );
+        }
+      },
+    });
   }
 
   async function deleteScale(id: string) {
     if (!isAdmin) {
-      alert("Você não tem permissão para remover escala.");
+      showMessage(
+        "Permissão negada",
+        "Você não tem permissão para remover escala.",
+        "warning",
+      );
       return;
     }
 
-    if (!confirm("Deseja remover este oficial da escala?")) return;
-
-    await api.delete(`/match-officials/${id}`);
-    await loadScales();
+    showConfirm({
+      title: "Remover oficial da escala",
+      message: "Deseja remover este oficial da escala?",
+      variant: "danger",
+      confirmText: "Remover",
+      onConfirm: async () => {
+        try {
+          await api.delete(`/match-officials/${id}`);
+          await loadScales();
+          showMessage(
+            "Oficial removido",
+            "Oficial removido da escala com sucesso.",
+            "success",
+          );
+        } catch (error: any) {
+          showMessage(
+            "Erro ao remover oficial",
+            getErrorMessage(error, "Erro ao remover oficial da escala."),
+            "danger",
+          );
+        }
+      },
+    });
   }
 
   async function deleteFullScale(group: ScaleGroup) {
     if (!isAdmin) {
-      alert("Você não tem permissão para excluir escala.");
+      showMessage(
+        "Permissão negada",
+        "Você não tem permissão para excluir escala.",
+        "warning",
+      );
       return;
     }
 
-    if (!confirm("Deseja remover a escala completa deste jogo?")) return;
+    showConfirm({
+      title: "Excluir escala",
+      message: "Deseja remover a escala completa deste jogo?",
+      variant: "danger",
+      confirmText: "Excluir",
+      onConfirm: async () => {
+        try {
+          if (group.dco) {
+            await api.delete(`/match-officials/${group.dco.id}`);
+          }
 
-    if (group.dco) {
-      await api.delete(`/match-officials/${group.dco.id}`);
-    }
+          if (group.assistant) {
+            await api.delete(`/match-officials/${group.assistant.id}`);
+          }
 
-    if (group.assistant) {
-      await api.delete(`/match-officials/${group.assistant.id}`);
-    }
-
-    await loadScales();
+          await loadScales();
+          showMessage("Escala excluída", "Escala removida com sucesso.", "success");
+        } catch (error: any) {
+          showMessage(
+            "Erro ao excluir escala",
+            getErrorMessage(error, "Erro ao excluir escala."),
+            "danger",
+          );
+        }
+      },
+    });
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-[var(--cdb-light)] lg:flex-row">
+    <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
       <Sidebar />
 
-      <div className="flex-1">
-        <header className="border-b border-slate-200 bg-white px-4 py-6 lg:px-8 lg:py-8">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-            <div className="max-w-3xl">
-              <span className="inline-flex rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-[var(--cdb-blue)] ring-1 ring-blue-100">
-                Gestão operacional
-              </span>
+      <div className="min-w-0 flex-1 overflow-x-hidden">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.18em]">
+                📋 Gestão operacional
+              </div>
 
-              <h1 className="mt-4 text-3xl font-black text-[var(--cdb-dark)] lg:text-5xl">
+              <h1 className="text-3xl lg:text-4xl font-black mt-3 text-[var(--cdb-dark)]">
                 Escalas
               </h1>
 
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 lg:text-base">
+              <p className="text-slate-500 mt-2 max-w-2xl">
                 Cadastre, acompanhe e confirme as escalas dos oficiais por jogo.
               </p>
             </div>
 
-            <div className="w-fit rounded-3xl bg-[var(--cdb-blue)] px-5 py-4 text-white shadow-lg shadow-blue-900/20">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-100">
-                Jogos escalados
-              </p>
-              <strong className="mt-1 block text-3xl font-black">
-                {groupedScales.length}
-              </strong>
+            <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
+              {groupedScales.length} jogos escalados
             </div>
           </div>
         </header>
 
-        <section className="p-4 lg:p-8">
+        <section className="w-full max-w-full overflow-x-hidden p-4 lg:p-8">
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 lg:mb-8">
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
@@ -538,6 +707,10 @@ function ScalesPageContent() {
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Jogo <span className="text-red-500">*</span>
+                  </label>
+
                   <select
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100"
                     value={matchId}
@@ -553,12 +726,17 @@ function ScalesPageContent() {
                       </option>
                     ))}
                   </select>
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    Jogo <span className="text-red-500">*</span>
-                  </label>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    São listados apenas jogos ativos e ainda sem escala cadastrada.
+                  </p>
                 </div>
 
                 <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    DCO
+                  </label>
+
                   <select
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
                     value={dcoOfficialId}
@@ -572,12 +750,13 @@ function ScalesPageContent() {
                       </option>
                     ))}
                   </select>
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    DCO
-                  </label>
                 </div>
 
                 <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Assistente
+                  </label>
+
                   <select
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
                     value={assistantOfficialId}
@@ -591,9 +770,6 @@ function ScalesPageContent() {
                       </option>
                     ))}
                   </select>
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    Assistente
-                  </label>
                 </div>
               </div>
 
@@ -896,8 +1072,8 @@ function ScalesPageContent() {
               ))}
             </div>
 
-            <div className="hidden overflow-x-auto lg:block">
-              <table className="w-full border-collapse">
+            <div className="hidden max-w-full overflow-x-auto lg:block">
+              <table className="min-w-[1180px] w-full border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
                     <th className="py-4 pr-4 font-black">Jogo</th>
@@ -1104,6 +1280,24 @@ function ScalesPageContent() {
           </div>
         </section>
       </div>
+
+      <ConfirmModal
+        open={modal.open}
+        title={modal.title}
+        message={modal.message}
+        variant={modal.variant}
+        confirmText={modal.confirmText}
+        cancelText={modal.cancelText}
+        onCancel={closeModal}
+        onConfirm={async () => {
+          if (modal.onConfirm) {
+            await modal.onConfirm();
+            return;
+          }
+
+          closeModal();
+        }}
+      />
     </main>
   );
 }
@@ -1112,7 +1306,7 @@ export default function ScalesPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen flex-col bg-[var(--cdb-light)] lg:flex-row">
+        <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
           <div className="p-8 text-slate-500">Carregando escalas...</div>
         </main>
       }
