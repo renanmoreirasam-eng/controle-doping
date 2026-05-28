@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { getUser, logout } from '../services/auth';
+import { usePathname, useRouter } from 'next/navigation';
+import { getToken, getUser, logout } from '../services/auth';
 
 const allMenus = [
   {
@@ -58,6 +58,7 @@ const allMenus = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -65,8 +66,17 @@ export function Sidebar() {
 
   useEffect(() => {
     setMounted(true);
-    setUser(getUser());
-  }, []);
+
+    const token = getToken();
+    const currentUser = getUser();
+
+    if (pathname.startsWith('/dashboard') && (!token || !currentUser)) {
+      router.replace(`/?redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+
+    setUser(currentUser);
+  }, [pathname, router]);
 
   const rawRole = user?.role || user?.user?.role || '';
 

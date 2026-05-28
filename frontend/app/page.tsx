@@ -5,12 +5,35 @@ import { useState } from 'react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { api } from '../services/api';
 
+const TOKEN_COOKIE_NAME = 'token';
+const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+
 type ModalState = {
   open: boolean;
   title: string;
   message: string;
   variant: 'danger' | 'success' | 'warning' | 'default';
 };
+
+function saveAuthCookie(token: string) {
+  document.cookie = `${TOKEN_COOKIE_NAME}=${encodeURIComponent(
+    token,
+  )}; path=/; max-age=${TOKEN_MAX_AGE_SECONDS}; SameSite=Lax`;
+}
+
+function getRedirectPath() {
+  if (typeof window === 'undefined') return '/dashboard';
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const redirect = searchParams.get('redirect');
+
+  if (!redirect) return '/dashboard';
+
+  if (!redirect.startsWith('/')) return '/dashboard';
+  if (redirect.startsWith('//')) return '/dashboard';
+
+  return redirect;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -89,8 +112,9 @@ export default function LoginPage() {
 
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
+      saveAuthCookie(token);
 
-      router.push('/dashboard');
+      router.push(getRedirectPath());
     } catch (error: any) {
       showModal(
         'Não foi possível entrar',
