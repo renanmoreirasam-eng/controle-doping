@@ -16,6 +16,8 @@ type User = {
 
 type Official = {
   id: string;
+  active?: boolean;
+  operationalRole?: string | null;
   user?: {
     name: string;
     email: string;
@@ -701,7 +703,17 @@ export default function InventoryPage() {
   }
 
   const dcoOptions = useMemo(() => {
-    return officials.filter((official) => Boolean(official.user));
+    return officials.filter((official) => {
+      const operationalRole = (official.operationalRole || "")
+        .trim()
+        .toUpperCase();
+
+      return (
+        Boolean(official.user) &&
+        official.active !== false &&
+        operationalRole === "DCO"
+      );
+    });
   }, [officials]);
 
   const availableStockKits = useMemo(() => {
