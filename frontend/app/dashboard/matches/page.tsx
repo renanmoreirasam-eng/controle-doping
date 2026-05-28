@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { Sidebar } from '../../../components/Sidebar';
+import { ConfirmModal } from '../../../components/ConfirmModal';
 import { api } from '../../../services/api';
 import { getUser } from '../../../services/auth';
 
@@ -68,6 +69,18 @@ type MissionOrderFile = {
   dataUrl: string;
 };
 
+type ModalVariant = 'danger' | 'success' | 'warning' | 'default';
+
+type ModalState = {
+  open: boolean;
+  title: string;
+  message: string;
+  variant: ModalVariant;
+  confirmText: string;
+  cancelText?: string;
+  onConfirm?: () => void | Promise<void>;
+};
+
 const MAX_MISSION_ORDER_SIZE_MB = 8;
 
 function fileToDataUrl(file: File) {
@@ -81,15 +94,23 @@ function fileToDataUrl(file: File) {
   });
 }
 
-function isTodayMatch(matchDate: string) {
+function canAccessMatchOperation(matchDate: string) {
   const today = new Date();
   const date = new Date(matchDate);
 
-  return (
-    today.getFullYear() === date.getFullYear() &&
-    today.getMonth() === date.getMonth() &&
-    today.getDate() === date.getDate()
+  const todayOnly = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
   );
+
+  const matchOnly = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+
+  return todayOnly >= matchOnly;
 }
 
 export default function MatchesPage() {
@@ -123,7 +144,15 @@ export default function MatchesPage() {
   const [roundOrPhaseType, setRoundOrPhaseType] = useState<'Rodada' | 'Fase'>('Rodada');
   const [roundOrPhaseNumber, setRoundOrPhaseNumber] = useState('');
   const [missionOrderFile, setMissionOrderFile] = useState<MissionOrderFile | null>(null);
+  const [existingMissionOrderFile, setExistingMissionOrderFile] = useState<MissionOrderFile | null>(null);
   const [removeMissionOrderFile, setRemoveMissionOrderFile] = useState(false);
+  const [modal, setModal] = useState<ModalState>({
+    open: false,
+    title: '',
+    message: '',
+    variant: 'default',
+    confirmText: 'Fechar',
+  });
 
   const user = getUser();
 
@@ -134,6 +163,7 @@ export default function MatchesPage() {
   const isAdmin = userRole === 'ADMIN';
 
   const formRef = useRef<HTMLDivElement | null>(null);
+  const missionOrderFileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function loadMatches() {
     const response = await api.get('/matches');
@@ -168,27 +198,32 @@ export default function MatchesPage() {
   }, []);
 
   const filteredMatches = useMemo(() => {
-    return matches.filter((match) => {
-      const value = `
-        ${match.missionCode || ''}
-        ${match.matchNumber || ''}
-        ${match.roundOrPhase || ''}
-        ${match.homeTeam}
-        ${match.awayTeam}
-        ${match.championship.name}
-        ${match.stadium.name}
-        ${match.stadium.city}
-      `.toLowerCase();
+    return matches
+      .filter((match) => {
+        const value = `
+          ${match.missionCode || ''}
+          ${match.matchNumber || ''}
+          ${match.roundOrPhase || ''}
+          ${match.homeTeam}
+          ${match.awayTeam}
+          ${match.championship.name}
+          ${match.stadium.name}
+          ${match.stadium.city}
+        `.toLowerCase();
 
-      const matchesSearch = value.includes(search.toLowerCase());
+        const matchesSearch = value.includes(search.toLowerCase());
 
-      const matchesTab =
-        activeTab === 'DONE'
-          ? match.status === 'CONTROL_DONE'
-          : match.status !== 'CONTROL_DONE';
+        const matchesTab =
+          activeTab === 'DONE'
+            ? match.status === 'CONTROL_DONE'
+            : match.status !== 'CONTROL_DONE';
 
-      return matchesSearch && matchesTab;
-    });
+        return matchesSearch && matchesTab;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime(),
+      );
   }, [matches, search, activeTab]);
 
   const scheduledMatches = matches.filter(
@@ -211,6 +246,72 @@ export default function MatchesPage() {
     (match) => match.status === 'CONTROL_DONE',
   ).length;
 
+  function clearMissionOrderFileSelection() {
+    setMissionOrderFile(null);
+
+    if (missionOrderFileInputRef.current) {
+      missionOrderFileInputRef.current.value = '';
+    }
+  }
+
+  function clearMissionOrderFile() {
+    setMissionOrderFile(null);
+    setExistingMissionOrderFile(null);
+    setRemoveMissionOrderFile(false);
+
+    if (missionOrderFileInputRef.current) {
+      missionOrderFileInputRef.current.value = '';
+    }
+  }
+
+
+  function closeModal() {
+    setModal((current) => ({
+      ...current,
+      open: false,
+      onConfirm: undefined,
+      cancelText: undefined,
+    }));
+  }
+
+  function showMessage(
+    title: string,
+    message: string,
+    variant: ModalVariant = 'default',
+  ) {
+    setModal({
+      open: true,
+      title,
+      message,
+      variant,
+      confirmText: 'Fechar',
+    });
+  }
+
+  function showConfirm({
+    title,
+    message,
+    variant = 'warning',
+    confirmText = 'Confirmar',
+    onConfirm,
+  }: {
+    title: string;
+    message: string;
+    variant?: ModalVariant;
+    confirmText?: string;
+    onConfirm: () => void | Promise<void>;
+  }) {
+    setModal({
+      open: true,
+      title,
+      message,
+      variant,
+      confirmText,
+      cancelText: 'Cancelar',
+      onConfirm,
+    });
+  }
+
   function clearForm() {
     setEditingId(null);
     setChampionshipId('');
@@ -226,8 +327,7 @@ export default function MatchesPage() {
     setRoundOrPhase('');
     setRoundOrPhaseType('Rodada');
     setRoundOrPhaseNumber('');
-    setMissionOrderFile(null);
-    setRemoveMissionOrderFile(false);
+    clearMissionOrderFile();
     setStatus('SCHEDULED');
   }
 
@@ -332,14 +432,17 @@ export default function MatchesPage() {
 
   async function handleMissionOrderFileChange(file: File | null) {
     if (!file) {
-      setMissionOrderFile(null);
+      clearMissionOrderFileSelection();
+      setRemoveMissionOrderFile(false);
       return;
     }
 
     const fileSizeMb = file.size / 1024 / 1024;
 
     if (fileSizeMb > MAX_MISSION_ORDER_SIZE_MB) {
-      alert(`O arquivo deve ter no máximo ${MAX_MISSION_ORDER_SIZE_MB}MB.`);
+      showMessage('Arquivo muito grande', `O arquivo deve ter no máximo ${MAX_MISSION_ORDER_SIZE_MB}MB.`, 'warning');
+      clearMissionOrderFileSelection();
+      setRemoveMissionOrderFile(false);
       return;
     }
 
@@ -402,8 +505,16 @@ export default function MatchesPage() {
     setRoundOrPhaseType(parsedRoundOrPhase.type);
     setRoundOrPhaseNumber(parsedRoundOrPhase.number);
 
-    setMissionOrderFile(null);
-    setRemoveMissionOrderFile(false);
+    clearMissionOrderFile();
+
+    if (match.missionOrderFileData) {
+      setExistingMissionOrderFile({
+        fileName: match.missionOrderFileName || 'ordem-de-missao',
+        fileType: match.missionOrderFileType || 'application/octet-stream',
+        dataUrl: match.missionOrderFileData,
+      });
+    }
+
     setMatchDate(formatDateOnly(match.matchDate));
     setMatchTime(formatTimeOnly(match.matchDate));
 
@@ -434,6 +545,14 @@ export default function MatchesPage() {
       };
     }
 
+    if (editingId && existingMissionOrderFile) {
+      return {
+        missionOrderFileName: existingMissionOrderFile.fileName,
+        missionOrderFileType: existingMissionOrderFile.fileType,
+        missionOrderFileData: existingMissionOrderFile.dataUrl,
+      };
+    }
+
     return {};
   }
 
@@ -442,7 +561,7 @@ export default function MatchesPage() {
     selectedStadiumId: string,
   ) {
     if (!matchDate || !matchTime) {
-      alert('Informe a data e o horário do jogo');
+      showMessage('Campos obrigatórios', 'Informe a data e o horário do jogo.', 'warning');
       return;
     }
 
@@ -464,12 +583,9 @@ export default function MatchesPage() {
       clearForm();
       await loadMatches();
 
-      alert('Jogo cadastrado com sucesso!');
+      showMessage('Jogo cadastrado', 'Jogo cadastrado com sucesso!', 'success');
     } catch (error: any) {
-      alert(
-        error.response?.data?.message ||
-          'Erro ao cadastrar jogo',
-      );
+      showMessage('Erro ao cadastrar jogo', error.response?.data?.message || 'Erro ao cadastrar jogo.', 'danger');
     }
   }
 
@@ -480,7 +596,7 @@ export default function MatchesPage() {
     if (!editingId) return;
 
     if (!matchDate || !matchTime) {
-      alert('Informe a data e o horário do jogo');
+      showMessage('Campos obrigatórios', 'Informe a data e o horário do jogo.', 'warning');
       return;
     }
 
@@ -503,34 +619,43 @@ export default function MatchesPage() {
       clearForm();
       await loadMatches();
 
-      alert('Jogo atualizado com sucesso!');
+      showMessage('Jogo atualizado', 'Jogo atualizado com sucesso!', 'success');
     } catch (error: any) {
-      alert(
-        error.response?.data?.message ||
-          'Erro ao atualizar jogo',
-      );
+      showMessage('Erro ao atualizar jogo', error.response?.data?.message || 'Erro ao atualizar jogo.', 'danger');
     }
   }
 
-  async function deleteMatch(id: string) {
-    const confirmDelete = confirm(
-      'Deseja realmente excluir este jogo?',
-    );
+  function deleteMatch(id: string) {
+    showConfirm({
+      title: 'Excluir jogo',
+      message: 'Deseja realmente excluir este jogo? Essa ação não poderá ser desfeita.',
+      variant: 'danger',
+      confirmText: 'Excluir',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/matches/${id}`);
+          await loadMatches();
 
-    if (!confirmDelete) return;
-
-    try {
-      await api.delete(`/matches/${id}`);
-
-      await loadMatches();
-
-      alert('Jogo excluído com sucesso!');
-    } catch (error: any) {
-      alert(
-        error.response?.data?.message ||
-          'Erro ao excluir jogo',
-      );
-    }
+          setModal({
+            open: true,
+            title: 'Jogo excluído',
+            message: 'Jogo excluído com sucesso!',
+            variant: 'success',
+            confirmText: 'Fechar',
+          });
+        } catch (error: any) {
+          setModal({
+            open: true,
+            title: 'Erro ao excluir jogo',
+            message:
+              error.response?.data?.message ||
+              'Erro ao excluir jogo.',
+            variant: 'danger',
+            confirmText: 'Fechar',
+          });
+        }
+      },
+    });
   }
 
   async function handleSubmit() {
@@ -544,7 +669,7 @@ export default function MatchesPage() {
       !matchDate ||
       !matchTime
     ) {
-      alert('Preencha todos os campos obrigatórios');
+      showMessage('Campos obrigatórios', 'Preencha todos os campos obrigatórios.', 'warning');
       return;
     }
 
@@ -552,24 +677,24 @@ export default function MatchesPage() {
       findChampionshipByName(championshipName);
 
     if (!selectedChampionship) {
-      alert('Selecione um campeonato válido da lista');
+      showMessage('Campeonato inválido', 'Selecione um campeonato válido da lista.', 'warning');
       return;
     }
 
     const selectedStadium = findStadiumByLabel(stadiumName);
 
     if (!selectedStadium) {
-      alert('Selecione um estádio válido da lista');
+      showMessage('Estádio inválido', 'Selecione um estádio válido da lista.', 'warning');
       return;
     }
 
     if (!teamExists(homeTeam)) {
-      alert('Selecione um time mandante válido da lista');
+      showMessage('Time mandante inválido', 'Selecione um time mandante válido da lista.', 'warning');
       return;
     }
 
     if (!teamExists(awayTeam)) {
-      alert('Selecione um time visitante válido da lista');
+      showMessage('Time visitante inválido', 'Selecione um time visitante válido da lista.', 'warning');
       return;
     }
 
@@ -577,9 +702,7 @@ export default function MatchesPage() {
       homeTeam.trim().toLowerCase() ===
       awayTeam.trim().toLowerCase()
     ) {
-      alert(
-        'Mandante e visitante não podem ser o mesmo time',
-      );
+      showMessage('Times inválidos', 'Mandante e visitante não podem ser o mesmo time.', 'warning');
       return;
     }
 
@@ -980,6 +1103,7 @@ export default function MatchesPage() {
                   </p>
 
                   <input
+                    ref={missionOrderFileInputRef}
                     type="file"
                     accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                     className="border border-slate-200 rounded-2xl px-4 py-3 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]/30 focus:border-[var(--cdb-blue)] w-full file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
@@ -992,26 +1116,41 @@ export default function MatchesPage() {
                     Campo opcional. Aceita PDF, Word ou imagem até {MAX_MISSION_ORDER_SIZE_MB}MB.
                   </p>
 
-                  {(missionOrderFile || (editingId && !removeMissionOrderFile)) && (
+                  {(missionOrderFile || (editingId && existingMissionOrderFile && !removeMissionOrderFile)) && (
                     <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
                       {missionOrderFile ? (
                         <p>
                           Novo arquivo selecionado: <strong>{missionOrderFile.fileName}</strong>
                         </p>
-                      ) : (
-                        <p>
-                          Arquivo atual mantido. Selecione outro arquivo para substituir.
-                        </p>
-                      )}
+                      ) : existingMissionOrderFile ? (
+                        <div className="space-y-2">
+                          <p>
+                            Documento atual: <strong>{existingMissionOrderFile.fileName}</strong>
+                          </p>
 
-                      {editingId && (
+                          <a
+                            href={existingMissionOrderFile.dataUrl}
+                            download={existingMissionOrderFile.fileName || 'ordem-de-missao'}
+                            className="inline-flex rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                          >
+                            📄 Baixar documento atual
+                          </a>
+                        </div>
+                      ) : null}
+
+                      {editingId && (missionOrderFile || existingMissionOrderFile) && (
                         <button
                           type="button"
                           onClick={() => {
                             setMissionOrderFile(null);
+                            setExistingMissionOrderFile(null);
                             setRemoveMissionOrderFile(true);
+
+                            if (missionOrderFileInputRef.current) {
+                              missionOrderFileInputRef.current.value = '';
+                            }
                           }}
-                          className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+                          className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
                         >
                           Remover documento salvo
                         </button>
@@ -1201,13 +1340,13 @@ export default function MatchesPage() {
                         download={match.missionOrderFileName || 'ordem-de-missao'}
                         className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
                       >
-                        📄 Ordem
+                        📄 Ordem de missão
                       </a>
                     )}
                   </div>
 
                   <div className="mt-5 flex flex-wrap gap-2">
-                    {isTodayMatch(match.matchDate) ? (
+                    {canAccessMatchOperation(match.matchDate) ? (
                       <Link
                         href={`/dashboard/matches/${match.id}`}
                         className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
@@ -1218,7 +1357,7 @@ export default function MatchesPage() {
                       <button
                         type="button"
                         disabled
-                        title="A operação será liberada somente no dia do jogo."
+                        title="A operação será liberada a partir do dia do jogo."
                         className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
                       >
                         🧪 Operação
@@ -1258,7 +1397,7 @@ export default function MatchesPage() {
                     </th>
 
                     <th className="py-4 pr-4">
-                      Nº/Rodada/Fase
+                      Nº/Rodada
                     </th>
 
                     <th className="py-4 pr-4">
@@ -1340,7 +1479,7 @@ export default function MatchesPage() {
 
                       <td className="py-5 pr-4">
                         <div className="flex flex-wrap gap-2">
-                          {isTodayMatch(match.matchDate) ? (
+                          {canAccessMatchOperation(match.matchDate) ? (
                             <Link
                               href={`/dashboard/matches/${match.id}`}
                               className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
@@ -1351,7 +1490,7 @@ export default function MatchesPage() {
                             <button
                               type="button"
                               disabled
-                              title="A operação será liberada somente no dia do jogo."
+                              title="A operação será liberada a partir do dia do jogo."
                               className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
                             >
                               🧪 Operação
@@ -1364,7 +1503,7 @@ export default function MatchesPage() {
                               download={match.missionOrderFileName || 'ordem-de-missao'}
                               className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
                             >
-                              📄 Ordem
+                              📄 Ordem de missão
                             </a>
                           )}
 
@@ -1413,6 +1552,17 @@ export default function MatchesPage() {
           </div>
         </section>
       </div>
+
+      <ConfirmModal
+        open={modal.open}
+        title={modal.title}
+        message={modal.message}
+        variant={modal.variant}
+        confirmText={modal.confirmText}
+        cancelText={modal.cancelText}
+        onCancel={closeModal}
+        onConfirm={modal.onConfirm || closeModal}
+      />
     </main>
   );
 }
