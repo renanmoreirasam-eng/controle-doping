@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Sidebar } from '../../../../components/Sidebar';
 import { ConfirmModal } from '../../../../components/ConfirmModal';
 import { api } from '../../../../services/api';
+import { getUser } from '../../../../services/auth';
 import Link from 'next/link';
 
 type Match = {
@@ -207,9 +208,70 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+function dataUrlToBlob(dataUrl: string) {
+  const [header, base64Data] = dataUrl.split(',');
+  const mimeType =
+    header?.match(/data:(.*?);base64/)?.[1] || 'application/octet-stream';
+
+  const binaryString = window.atob(base64Data || '');
+  const bytes = new Uint8Array(binaryString.length);
+
+  for (let index = 0; index < binaryString.length; index += 1) {
+    bytes[index] = binaryString.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
+function isIOSDevice() {
+  if (typeof navigator === 'undefined') return false;
+
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+function downloadDataUrl(dataUrl: string, fileName: string) {
+  const blob = dataUrlToBlob(dataUrl);
+  const blobUrl = window.URL.createObjectURL(blob);
+
+  if (isIOSDevice()) {
+    const openedWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+
+    if (!openedWindow) {
+      window.location.href = blobUrl;
+    }
+
+    window.setTimeout(() => {
+      window.URL.revokeObjectURL(blobUrl);
+    }, 60000);
+
+    return;
+  }
+
+  const link = document.createElement('a');
+
+  link.href = blobUrl;
+  link.download = fileName;
+  link.rel = 'noopener noreferrer';
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(blobUrl);
+  }, 1000);
+}
+
 export default function MatchDetailsPage() {
   const params = useParams();
   const matchId = params.id as string;
+
+  const user = getUser();
+  const userRole = String(user?.role || user?.user?.role || '').toUpperCase();
+  const isAdmin = userRole === 'ADMIN';
 
   const [match, setMatch] = useState<Match | null>(null);
   const [scales, setScales] = useState<Scale[]>([]);
@@ -436,11 +498,13 @@ export default function MatchDetailsPage() {
     hasMatchKits;
 
   const canUploadAthleteListFile =
+    isAdmin &&
     !!match &&
     !isControlDone &&
     isMatchInProgress;
 
   const canUploadFinalDocumentFile =
+    isAdmin &&
     !!match &&
     isControlDone;
 
@@ -1774,13 +1838,18 @@ function formatTimeOnly(date: string) {
                         </p>
                       </div>
 
-                      <a
-                        href={match.finalDocumentFileData}
-                        download={match.finalDocumentFileName}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadDataUrl(
+                            match.finalDocumentFileData!,
+                            match.finalDocumentFileName || 'documento-final-jogo',
+                          )
+                        }
                         className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
                       >
                         Baixar documento
-                      </a>
+                      </button>
                     </div>
                   )}
 
@@ -1937,13 +2006,18 @@ function formatTimeOnly(date: string) {
         </div>
 
         {match.athleteListFileName && match.athleteListFileData && (
-          <a
-            href={match.athleteListFileData}
-            download={match.athleteListFileName}
+          <button
+            type="button"
+            onClick={() =>
+              downloadDataUrl(
+                match.athleteListFileData!,
+                match.athleteListFileName || 'relacao-de-atletas',
+              )
+            }
             className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
           >
             Baixar relação
-          </a>
+          </button>
         )}
       </div>
 
@@ -1966,13 +2040,18 @@ function formatTimeOnly(date: string) {
         </div>
 
         {match.finalDocumentFileName && match.finalDocumentFileData && (
-          <a
-            href={match.finalDocumentFileData}
-            download={match.finalDocumentFileName}
+          <button
+            type="button"
+            onClick={() =>
+              downloadDataUrl(
+                match.finalDocumentFileData!,
+                match.finalDocumentFileName || 'documento-final-jogo',
+              )
+            }
             className="inline-flex w-fit items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
           >
             Baixar documento
-          </a>
+          </button>
         )}
       </div>
     </div>
@@ -2524,26 +2603,39 @@ function formatTimeOnly(date: string) {
                       </div>
 
                       {match.athleteListFileName && match.athleteListFileData && (
-                        <a
-                          href={match.athleteListFileData}
-                          download={match.athleteListFileName}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadDataUrl(
+                              match.athleteListFileData!,
+                              match.athleteListFileName || 'relacao-de-atletas',
+                            )
+                          }
                           className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
                         >
                           Baixar relação
-                        </a>
+                        </button>
                       )}
                     </div>
 
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      disabled={savingAthleteListFile || isControlDone}
-                      onChange={(event) => {
-                        handleUploadMatchDocument('athleteList', event.currentTarget.files);
-                        event.currentTarget.value = '';
-                      }}
-                      className="mt-4 block w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    />
+                    {canUploadAthleteListFile ? (
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        disabled={savingAthleteListFile}
+                        onChange={(event) => {
+                          handleUploadMatchDocument('athleteList', event.currentTarget.files);
+                          event.currentTarget.value = '';
+                        }}
+                        className="mt-4 block w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                    ) : (
+                      <p className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-500">
+                        {match.athleteListFileName
+                          ? 'Arquivo disponível para download.'
+                          : 'Upload disponível somente para ADMIN.'}
+                      </p>
+                    )}
                   </div>
 
                   <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
