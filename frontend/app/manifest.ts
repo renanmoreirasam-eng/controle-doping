@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Controle de Doping",
     short_name: "Doping",
     description: "Sistema de controle de doping esportivo",
-    start_url: "/login",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     background_color: "#ffffff",
