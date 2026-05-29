@@ -13,6 +13,7 @@ import { TeamsModule } from './teams/teams.module';
 import { RoomInspectionsModule } from './room-inspections/room-inspections.module';
 import { PushModule } from './push/push.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
 
 
 @Module({
@@ -31,6 +32,7 @@ import { InventoryModule } from './inventory/inventory.module';
     RoomInspectionsModule,
     PushModule,
     InventoryModule,
+    AnnouncementsModule,
   ],
 })
 export class AppModule {}

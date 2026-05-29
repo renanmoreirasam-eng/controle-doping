@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import EnableNotificationsButton from '@/components/EnableNotificationsButton';
 
@@ -14,6 +14,9 @@ type Match = {
   awayTeam: string;
   matchDate: string;
   status: string;
+  missionOrderFileName?: string | null;
+  missionOrderFileType?: string | null;
+  missionOrderFileData?: string | null;
 
   championship: {
     name: string;
@@ -28,6 +31,7 @@ type Match = {
 
 type Scale = {
   id: string;
+  matchId?: string;
   officialId: string;
   confirmed: boolean | null;
 
@@ -40,64 +44,67 @@ type Scale = {
     };
   };
 
-  match?: {
-    id: string;
-    homeTeam: string;
-    awayTeam: string;
-    matchDate: string;
-    championship?: {
-      name: string;
-    };
-  };
+  match?: Match;
 };
 
 export default function Dashboard() {
   const [matches, setMatches] = useState<Match[]>([]);
-  const [pendingScales, setPendingScales] = useState<Scale[]>([]);
-  const [loadingPendingScales, setLoadingPendingScales] = useState(true);
+  const [scales, setScales] = useState<Scale[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  async function loadMatches() {
-    const response = await api.get('/matches');
-    setMatches(response.data);
-  }
+  const user = getUser();
 
-  async function loadPendingScales() {
+  const userRole = String(
+    user?.role || user?.user?.role || '',
+  ).toUpperCase();
+
+  const isAdmin = userRole === 'ADMIN';
+
+  const loggedUserId =
+    user?.id ||
+    user?.sub ||
+    user?.userId ||
+    user?.user?.id;
+
+  const loggedUserEmail = user?.email || user?.user?.email;
+
+  async function loadDashboardData() {
     try {
-      const loggedUser = getUser();
+      setLoading(true);
 
-      const loggedUserId =
-        loggedUser?.id ||
-        loggedUser?.sub ||
-        loggedUser?.userId ||
-        loggedUser?.user?.id;
+      const [matchesResponse, scalesResponse] = await Promise.all([
+        api.get('/matches'),
+        api.get('/match-officials'),
+      ]);
 
-      const loggedUserEmail = loggedUser?.email || loggedUser?.user?.email;
-
-      const response = await api.get('/match-officials');
-
-      const scales = response.data.filter((scale: Scale) => {
-        const isPending =
-          scale.confirmed === null || scale.confirmed === undefined;
-
-        const belongsToLoggedUser =
-          scale.official?.user?.id === loggedUserId ||
-          scale.official?.user?.email === loggedUserEmail;
-
-        return isPending && belongsToLoggedUser;
-      });
-
-      setPendingScales(scales);
+      setMatches(matchesResponse.data || []);
+      setScales(scalesResponse.data || []);
     } catch (error) {
-      setPendingScales([]);
+      setMatches([]);
+      setScales([]);
     } finally {
-      setLoadingPendingScales(false);
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadMatches();
-    loadPendingScales();
+    loadDashboardData();
   }, []);
+
+  function isOwnScale(scale: Scale) {
+    return (
+      scale.official?.user?.id === loggedUserId ||
+      scale.official?.user?.email === loggedUserEmail
+    );
+  }
+
+  function hasMissionOrder(match?: Match | null) {
+    return Boolean(
+      match?.missionOrderFileData ||
+        match?.missionOrderFileName ||
+        match?.missionOrderFileType,
+    );
+  }
 
   function getStatusLabel(status: string) {
     if (status === 'SCHEDULED') return 'Agendado';
@@ -133,39 +140,94 @@ export default function Dashboard() {
     return 'bg-slate-100 text-slate-700 border border-slate-200';
   }
 
-  const inProgress = matches.filter(
-    (match) => match.status === 'IN_PROGRESS',
-  ).length;
+  const visibleScales = useMemo(() => {
+    if (isAdmin) return scales;
 
-  const finished = matches.filter(
-    (match) => match.status === 'CONTROL_DONE',
-  ).length;
+    return scales.filter((scale) => isOwnScale(scale));
+  }, [isAdmin, scales, loggedUserId, loggedUserEmail]);
 
-  const scheduled = matches.filter(
-    (match) => match.status === 'SCHEDULED',
-  ).length;
+  const userMatchIds = useMemo(() => {
+    return new Set(
+      scales
+        .filter((scale) => isOwnScale(scale))
+        .map((scale) => scale.match?.id || scale.matchId)
+        .filter(Boolean) as string[],
+    );
+  }, [scales, loggedUserId, loggedUserEmail]);
 
-  const recentMatches = matches.slice(0, 5);
+  const pendingScales = useMemo(() => {
+    return visibleScales.filter(
+      (scale) =>
+        scale.confirmed === null ||
+        scale.confirmed === undefined,
+    );
+  }, [visibleScales]);
 
-  const nextPendingScale = pendingScales
-    .slice()
-    .sort((a, b) => {
-      const dateA = a.match?.matchDate
-        ? new Date(a.match.matchDate).getTime()
-        : 0;
+  const refusedScales = useMemo(() => {
+    return scales.filter((scale) => scale.confirmed === false);
+  }, [scales]);
 
-      const dateB = b.match?.matchDate
-        ? new Date(b.match.matchDate).getTime()
-        : 0;
+  const scalesWithoutMissionOrder = useMemo(() => {
+    const uniqueMatches = new Map<string, Match>();
 
-      return dateA - dateB;
-    })[0];
+    for (const scale of scales) {
+      const match = scale.match;
+
+      if (!match?.id) continue;
+      if (match.status === 'CONTROL_DONE') continue;
+      if (match.status === 'CANCELED') continue;
+      if (hasMissionOrder(match)) continue;
+
+      uniqueMatches.set(match.id, match);
+    }
+
+    return Array.from(uniqueMatches.values());
+  }, [scales]);
+
+  const completedMatches = useMemo(() => {
+    const finishedMatches = matches.filter(
+      (match) => match.status === 'CONTROL_DONE',
+    );
+
+    if (isAdmin) {
+      return finishedMatches;
+    }
+
+    return finishedMatches.filter((match) => userMatchIds.has(match.id));
+  }, [matches, isAdmin, userMatchIds]);
+
+  const recentCompletedMatches = useMemo(() => {
+    return completedMatches
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.matchDate).getTime() -
+          new Date(a.matchDate).getTime(),
+      )
+      .slice(0, 5);
+  }, [completedMatches]);
+
+  const nextPendingScale = useMemo(() => {
+    return pendingScales
+      .slice()
+      .sort((a, b) => {
+        const dateA = a.match?.matchDate
+          ? new Date(a.match.matchDate).getTime()
+          : 0;
+
+        const dateB = b.match?.matchDate
+          ? new Date(b.match.matchDate).getTime()
+          : 0;
+
+        return dateA - dateB;
+      })[0];
+  }, [pendingScales]);
 
   return (
     <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
       <Sidebar />
 
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-5 lg:py-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -178,90 +240,20 @@ export default function Dashboard() {
               </h1>
 
               <p className="text-slate-500 mt-2 max-w-2xl">
-                Visão geral das partidas, escalas e controles de doping.
+                Acompanhe pendências de escala, recusas, ordens de missão e jogos realizados.
               </p>
             </div>
 
             <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
-              {matches.length} jogos cadastrados
+              {isAdmin ? 'Visão geral' : 'Minha visão'}
             </div>
           </div>
         </header>
 
         <section className="p-4 lg:p-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-5 mb-8">
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Jogos cadastrados
-                  </p>
-
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-dark)]">
-                    {matches.length}
-                  </h2>
-                </div>
-
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
-                  🏟️
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Em andamento
-                  </p>
-
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[#9A7600]">
-                    {inProgress}
-                  </h2>
-                </div>
-
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-yellow-soft)] text-[#9A7600] flex items-center justify-center text-3xl">
-                  🔴
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Controles realizados
-                  </p>
-
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
-                    {finished}
-                  </h2>
-                </div>
-
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
-                  ✅
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Jogos agendados
-                  </p>
-
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
-                    {scheduled}
-                  </h2>
-                </div>
-
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
-                  📅
-                </div>
-              </div>
-            </div>
-
+          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-5 mb-8 ${
+            isAdmin ? 'xl:grid-cols-4' : 'xl:grid-cols-2'
+          }`}>
             <Link
               href="/dashboard/scales?status=PENDING"
               className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
@@ -289,11 +281,13 @@ export default function Dashboard() {
                         : 'text-slate-700'
                     }`}
                   >
-                    {loadingPendingScales ? '-' : pendingScales.length}
+                    {loading ? '-' : pendingScales.length}
                   </h2>
 
                   <p className="text-xs text-slate-500 mt-2">
-                    Clique para confirmar
+                    {isAdmin
+                      ? 'Todas pendentes de confirmação'
+                      : 'Minhas pendentes de confirmação'}
                   </p>
                 </div>
 
@@ -305,6 +299,129 @@ export default function Dashboard() {
                   }`}
                 >
                   📋
+                </div>
+              </div>
+            </Link>
+
+            {isAdmin && (
+              <Link
+                href="/dashboard/scales?status=REFUSED"
+                className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
+                  refusedScales.length > 0
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-white border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        refusedScales.length > 0
+                          ? 'text-red-700'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      Escalas recusadas
+                    </p>
+
+                    <h2
+                      className={`text-3xl lg:text-4xl font-black mt-2 ${
+                        refusedScales.length > 0
+                          ? 'text-red-700'
+                          : 'text-slate-700'
+                      }`}
+                    >
+                      {loading ? '-' : refusedScales.length}
+                    </h2>
+
+                    <p className="text-xs text-slate-500 mt-2">
+                      Clique para ver recusadas
+                    </p>
+                  </div>
+
+                  <div
+                    className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                      refusedScales.length > 0
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    ⚠️
+                  </div>
+                </div>
+              </Link>
+            )}
+
+            {isAdmin && (
+              <Link
+                href="/dashboard/scales"
+                className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
+                  scalesWithoutMissionOrder.length > 0
+                    ? 'bg-purple-50 border-purple-200'
+                    : 'bg-white border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        scalesWithoutMissionOrder.length > 0
+                          ? 'text-purple-700'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      Sem ordem de missão
+                    </p>
+
+                    <h2
+                      className={`text-3xl lg:text-4xl font-black mt-2 ${
+                        scalesWithoutMissionOrder.length > 0
+                          ? 'text-purple-700'
+                          : 'text-slate-700'
+                      }`}
+                    >
+                      {loading ? '-' : scalesWithoutMissionOrder.length}
+                    </h2>
+
+                    <p className="text-xs text-slate-500 mt-2">
+                      Escalas com ordem não anexada
+                    </p>
+                  </div>
+
+                  <div
+                    className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                      scalesWithoutMissionOrder.length > 0
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    📄
+                  </div>
+                </div>
+              </Link>
+            )}
+
+            <Link
+              href="/dashboard/matches"
+              className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200 transition hover:shadow-md"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Jogos realizados
+                  </p>
+
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
+                    {loading ? '-' : completedMatches.length}
+                  </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    {isAdmin ? 'Todos concluídos' : 'Meus jogos concluídos'}
+                  </p>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
+                  ✅
                 </div>
               </div>
             </Link>
@@ -322,7 +439,9 @@ export default function Dashboard() {
                   </p>
 
                   <h2 className="text-xl lg:text-2xl font-black text-[var(--cdb-dark)] mt-2">
-                    Você possui {pendingScales.length} escala(s) pendente(s) de aprovação
+                    {isAdmin
+                      ? `Existem ${pendingScales.length} escala(s) pendente(s) de confirmação`
+                      : `Você possui ${pendingScales.length} escala(s) pendente(s) de confirmação`}
                   </h2>
 
                   {nextPendingScale?.match && (
@@ -345,24 +464,26 @@ export default function Dashboard() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
                   <h2 className="text-2xl font-black text-[var(--cdb-dark)]">
-                    Operações recentes
+                    Jogos realizados recentes
                   </h2>
 
                   <p className="text-slate-500 mt-1">
-                    Últimos jogos cadastrados no sistema
+                    {isAdmin
+                      ? 'Últimos controles realizados no sistema'
+                      : 'Últimos controles realizados em que você esteve escalado'}
                   </p>
                 </div>
 
-                <div className="bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] px-4 py-2 rounded-2xl text-sm font-black w-fit">
-                  {matches.length} jogos
+                <div className="bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] px-4 py-2 rounded-2xl text-sm font-black w-fit">
+                  {completedMatches.length} realizado(s)
                 </div>
               </div>
 
               <div className="space-y-4">
-                {recentMatches.map((match) => (
+                {recentCompletedMatches.map((match) => (
                   <div
                     key={match.id}
-                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 hover:border-blue-200 hover:bg-[var(--cdb-blue-soft)]/40 transition"
+                    className="border border-slate-200 rounded-3xl p-4 lg:p-5 hover:border-emerald-200 hover:bg-emerald-50/40 transition"
                   >
                     <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                       <div>
@@ -405,16 +526,16 @@ export default function Dashboard() {
                   </div>
                 ))}
 
-                {matches.length === 0 && (
+                {recentCompletedMatches.length === 0 && (
                   <div className="border border-dashed border-slate-300 rounded-3xl p-8 text-center bg-slate-50">
-                    <div className="text-5xl mb-4">⚽</div>
+                    <div className="text-5xl mb-4">✅</div>
 
                     <h3 className="text-xl font-black text-[var(--cdb-dark)]">
-                      Nenhuma operação encontrada
+                      Nenhum jogo realizado encontrado
                     </h3>
 
                     <p className="text-slate-500 mt-2">
-                      Cadastre jogos para visualizar o painel operacional.
+                      Os controles finalizados aparecerão aqui.
                     </p>
                   </div>
                 )}
@@ -428,37 +549,9 @@ export default function Dashboard() {
                 </h2>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-4">
                     <span className="text-slate-500 font-semibold">
-                      Jogos cadastrados
-                    </span>
-
-                    <strong className="text-[var(--cdb-blue)]">
-                      {matches.length}
-                    </strong>
-                  </div>
-
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-slate-500 font-semibold">
-                      Em andamento
-                    </span>
-
-                    <strong className="text-[#9A7600]">{inProgress}</strong>
-                  </div>
-
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-slate-500 font-semibold">
-                      Finalizados
-                    </span>
-
-                    <strong className="text-[var(--cdb-green)]">
-                      {finished}
-                    </strong>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-semibold">
-                      Minhas pendências
+                      Escalas pendentes
                     </span>
 
                     <strong
@@ -469,6 +562,52 @@ export default function Dashboard() {
                       }
                     >
                       {pendingScales.length}
+                    </strong>
+                  </div>
+
+                  {isAdmin && (
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-4">
+                      <span className="text-slate-500 font-semibold">
+                        Escalas recusadas
+                      </span>
+
+                      <strong
+                        className={
+                          refusedScales.length > 0
+                            ? 'text-red-700'
+                            : 'text-slate-700'
+                        }
+                      >
+                        {refusedScales.length}
+                      </strong>
+                    </div>
+                  )}
+
+                  {isAdmin && (
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-4">
+                      <span className="text-slate-500 font-semibold">
+                        Sem ordem de missão
+                      </span>
+
+                      <strong
+                        className={
+                          scalesWithoutMissionOrder.length > 0
+                            ? 'text-purple-700'
+                            : 'text-slate-700'
+                        }
+                      >
+                        {scalesWithoutMissionOrder.length}
+                      </strong>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-slate-500 font-semibold">
+                      Jogos realizados
+                    </span>
+
+                    <strong className="text-[var(--cdb-green)]">
+                      {completedMatches.length}
                     </strong>
                   </div>
                 </div>
@@ -484,14 +623,14 @@ export default function Dashboard() {
                   </h2>
 
                   <p className="text-blue-100">
-                    Acompanhe partidas, escalas, sorteios e controles realizados.
+                    Acompanhe escalas, confirmações e controles realizados.
                   </p>
 
                   <Link
-                    href="/dashboard/matches"
+                    href="/dashboard/scales"
                     className="block mt-6 bg-white text-[var(--cdb-blue)] text-center py-3 rounded-2xl font-black hover:bg-slate-50 transition"
                   >
-                    Ver jogos
+                    Ver escalas
                   </Link>
                 </div>
               </div>

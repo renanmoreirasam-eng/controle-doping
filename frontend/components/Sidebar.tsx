@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { getToken, getUser, logout } from '../services/auth';
+import { usePathname } from 'next/navigation';
+import { getUser, logout } from '../services/auth';
+import { PendingAnnouncementsModal } from './PendingAnnouncementsModal';
 
 const allMenus = [
   {
@@ -37,6 +38,12 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
+    name: 'Comunicados',
+    href: '/dashboard/announcements',
+    icon: '📢',
+    roles: ['ADMIN'],
+  },
+  {
     name: 'Campeonatos',
     href: '/dashboard/championships',
     icon: '🏆',
@@ -58,7 +65,6 @@ const allMenus = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -66,17 +72,8 @@ export function Sidebar() {
 
   useEffect(() => {
     setMounted(true);
-
-    const token = getToken();
-    const currentUser = getUser();
-
-    if (pathname.startsWith('/dashboard') && (!token || !currentUser)) {
-      router.replace(`/?redirect=${encodeURIComponent(pathname)}`);
-      return;
-    }
-
-    setUser(currentUser);
-  }, [pathname, router]);
+    setUser(getUser());
+  }, []);
 
   const rawRole = user?.role || user?.user?.role || '';
 
@@ -255,6 +252,8 @@ export function Sidebar() {
           </button>
         </div>
       </aside>
+
+      <PendingAnnouncementsModal />
     </>
   );
 }
