@@ -41,6 +41,12 @@ type Match = {
   missionOrderFileName?: string | null;
   missionOrderFileType?: string | null;
   missionOrderFileData?: string | null;
+  athleteListFileName?: string | null;
+  athleteListFileType?: string | null;
+  athleteListFileData?: string | null;
+  finalDocumentFileName?: string | null;
+  finalDocumentFileType?: string | null;
+  finalDocumentFileData?: string | null;
   championshipId?: string;
   stadiumId?: string;
 
@@ -174,6 +180,9 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [championships, setChampionships] = useState<Championship[]>([]);
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'DONE'>('ACTIVE');
+  const [cardFilter, setCardFilter] = useState<
+    '' | 'TO_DO' | 'MISSING_DOCUMENTATION' | 'COMPLETED' | 'MISSION_ORDER'
+  >('');
 
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -254,6 +263,39 @@ export default function MatchesPage() {
     loadTeams();
   }, []);
 
+  function hasMissionOrder(match: Match) {
+    return Boolean(
+      match.missionOrderFileData ||
+        match.missionOrderFileName ||
+        match.missionOrderFileType,
+    );
+  }
+
+  function hasFinalDocumentation(match: Match) {
+    return Boolean(
+      match.finalDocumentFileData ||
+        match.finalDocumentFileName ||
+        match.finalDocumentFileType,
+    );
+  }
+
+  function isMatchToDo(match: Match) {
+    return match.status !== 'CONTROL_DONE' && match.status !== 'CANCELED';
+  }
+
+  function isCompletedWithoutDocumentation(match: Match) {
+    return match.status === 'CONTROL_DONE' && !hasFinalDocumentation(match);
+  }
+
+  function isPendingMissionOrder(match: Match) {
+    return isMatchToDo(match) && !hasMissionOrder(match);
+  }
+
+  function applyCardFilter(filter: typeof cardFilter, tab: typeof activeTab) {
+    setCardFilter(filter);
+    setActiveTab(tab);
+  }
+
   const filteredMatches = useMemo(() => {
     return matches
       .filter((match) => {
@@ -275,25 +317,33 @@ export default function MatchesPage() {
             ? match.status === 'CONTROL_DONE'
             : match.status !== 'CONTROL_DONE';
 
-        return matchesSearch && matchesTab;
+        const matchesCardFilter =
+          !cardFilter ||
+          (cardFilter === 'TO_DO' && isMatchToDo(match)) ||
+          (cardFilter === 'MISSING_DOCUMENTATION' &&
+            isCompletedWithoutDocumentation(match)) ||
+          (cardFilter === 'COMPLETED' && match.status === 'CONTROL_DONE') ||
+          (cardFilter === 'MISSION_ORDER' && isPendingMissionOrder(match));
+
+        return matchesSearch && matchesTab && matchesCardFilter;
       })
       .sort(
         (a, b) =>
           new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime(),
       );
-  }, [matches, search, activeTab]);
+  }, [matches, search, activeTab, cardFilter]);
 
-  const scheduledMatches = matches.filter(
-    (match) => match.status === 'SCHEDULED',
-  ).length;
+  const matchesToDo = matches.filter(isMatchToDo).length;
 
-  const progressMatches = matches.filter(
-    (match) => match.status === 'IN_PROGRESS',
+  const completedWithoutDocumentation = matches.filter(
+    isCompletedWithoutDocumentation,
   ).length;
 
   const completedMatches = matches.filter(
     (match) => match.status === 'CONTROL_DONE',
   ).length;
+
+  const pendingMissionOrder = matches.filter(isPendingMissionOrder).length;
 
   const activeMatches = matches.filter(
     (match) => match.status !== 'CONTROL_DONE',
@@ -867,77 +917,167 @@ export default function MatchesPage() {
 
         <section className="p-4 lg:p-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5 mb-8">
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <button
+              type="button"
+              onClick={() => applyCardFilter('TO_DO', 'ACTIVE')}
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                cardFilter === 'TO_DO'
+                  ? 'bg-[var(--cdb-blue-soft)] border-blue-200'
+                  : 'bg-white border-slate-200'
+              }`}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Jogos cadastrados
-                  </p>
-
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-dark)]">
-                    {matches.length}
-                  </h2>
-                </div>
-
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
-                  🏟️
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Jogos agendados
+                  <p
+                    className={`text-sm font-semibold ${
+                      cardFilter === 'TO_DO'
+                        ? 'text-[var(--cdb-blue)]'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    Jogos para realizar
                   </p>
 
                   <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-blue)]">
-                    {scheduledMatches}
+                    {matchesToDo}
                   </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    {isAdmin ? 'Todos ainda não concluídos' : 'Meus jogos ativos'}
+                  </p>
                 </div>
 
                 <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-3xl">
                   📅
                 </div>
               </div>
-            </div>
+            </button>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <button
+              type="button"
+              onClick={() => applyCardFilter('MISSING_DOCUMENTATION', 'DONE')}
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                completedWithoutDocumentation > 0
+                  ? 'bg-[var(--cdb-yellow-soft)] border-yellow-200'
+                  : 'bg-white border-slate-200'
+              }`}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Em andamento
+                  <p
+                    className={`text-sm font-semibold ${
+                      completedWithoutDocumentation > 0
+                        ? 'text-[#9A7600]'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    Finalizados sem documentação
                   </p>
 
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[#9A7600]">
-                    {progressMatches}
+                  <h2
+                    className={`text-3xl lg:text-4xl font-black mt-2 ${
+                      completedWithoutDocumentation > 0
+                        ? 'text-[#9A7600]'
+                        : 'text-slate-700'
+                    }`}
+                  >
+                    {completedWithoutDocumentation}
                   </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    Falta subir documentação final
+                  </p>
                 </div>
 
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-yellow-soft)] text-[#9A7600] flex items-center justify-center text-3xl">
-                  🔴
+                <div
+                  className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                    completedWithoutDocumentation > 0
+                      ? 'bg-yellow-100 text-[#9A7600]'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  📄
                 </div>
               </div>
-            </div>
+            </button>
 
-            <div className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200">
+            <button
+              type="button"
+              onClick={() => applyCardFilter('COMPLETED', 'DONE')}
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                cardFilter === 'COMPLETED'
+                  ? 'bg-[var(--cdb-green-soft)] border-emerald-200'
+                  : 'bg-white border-slate-200'
+              }`}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-slate-500 text-sm font-semibold">
-                    Controles realizados
+                    Jogos concluídos
                   </p>
 
                   <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
                     {completedMatches}
                   </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    {isAdmin ? 'Todos os controles realizados' : 'Meus controles realizados'}
+                  </p>
                 </div>
 
                 <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
                   ✅
                 </div>
               </div>
-            </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => applyCardFilter('MISSION_ORDER', 'ACTIVE')}
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                pendingMissionOrder > 0
+                  ? 'bg-purple-50 border-purple-200'
+                  : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p
+                    className={`text-sm font-semibold ${
+                      pendingMissionOrder > 0
+                        ? 'text-purple-700'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    Pendentes ordem de missão
+                  </p>
+
+                  <h2
+                    className={`text-3xl lg:text-4xl font-black mt-2 ${
+                      pendingMissionOrder > 0
+                        ? 'text-purple-700'
+                        : 'text-slate-700'
+                    }`}
+                  >
+                    {pendingMissionOrder}
+                  </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    Jogos ativos sem ordem anexada
+                  </p>
+                </div>
+
+                <div
+                  className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                    pendingMissionOrder > 0
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  📋
+                </div>
+              </div>
+            </button>
           </div>
 
           {isAdmin && (
@@ -1299,9 +1439,9 @@ export default function MatchesPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
               <button
-                onClick={() => setActiveTab('ACTIVE')}
+                onClick={() => applyCardFilter('', 'ACTIVE')}
                 className={`px-5 py-3 rounded-2xl font-semibold transition ${
-                  activeTab === 'ACTIVE'
+                  activeTab === 'ACTIVE' && !cardFilter
                     ? 'bg-[var(--cdb-blue)] text-white shadow-sm'
                     : 'bg-white text-[var(--cdb-blue)] border border-slate-200 hover:bg-[var(--cdb-blue-soft)]'
                 }`}
@@ -1310,9 +1450,9 @@ export default function MatchesPage() {
               </button>
 
               <button
-                onClick={() => setActiveTab('DONE')}
+                onClick={() => applyCardFilter('', 'DONE')}
                 className={`px-5 py-3 rounded-2xl font-semibold transition ${
-                  activeTab === 'DONE'
+                  activeTab === 'DONE' && !cardFilter
                     ? 'bg-[var(--cdb-green)] text-white shadow-sm'
                     : 'bg-white text-[var(--cdb-blue)] border border-slate-200 hover:bg-[var(--cdb-blue-soft)]'
                 }`}
