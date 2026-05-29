@@ -323,28 +323,49 @@ export default function OfficialsPage() {
     (official) => !official.active,
   ).length;
 
-  const filteredOfficials = officials.filter((official) => {
-    const value = isAdmin
-      ? `
-        ${official.user.name}
-        ${official.user.email}
-        ${official.phone}
-        ${official.pixKey}
-        ${official.documentType}
-        ${official.documentNumber}
-        ${official.cpf}
-        ${official.address}
-        ${official.shirtSize}
-        ${official.operationalRole}
-      `.toLowerCase()
-      : `
-        ${official.user.name}
-        ${official.phone}
-        ${official.address}
-      `.toLowerCase();
+  const filteredOfficials = officials
+    .filter((official) => {
+      const value = isAdmin
+        ? `
+          ${official.user.name}
+          ${official.user.email}
+          ${official.phone}
+          ${official.pixKey}
+          ${official.documentType}
+          ${official.documentNumber}
+          ${official.cpf}
+          ${official.address}
+          ${official.shirtSize}
+          ${official.operationalRole}
+        `.toLowerCase()
+        : `
+          ${official.user.name}
+          ${official.phone}
+          ${official.address}
+        `.toLowerCase();
 
-    return value.includes(search.toLowerCase());
-  });
+      return value.includes(search.toLowerCase());
+    })
+    .sort((a, b) => {
+      const roleOrder = (role?: string | null) => {
+        const normalizedRole = String(role || '').trim().toUpperCase();
+
+        if (normalizedRole === 'DCO') return 0;
+        if (normalizedRole === 'ESCOLTA') return 1;
+
+        return 2;
+      };
+
+      const roleComparison = roleOrder(a.operationalRole) - roleOrder(b.operationalRole);
+
+      if (roleComparison !== 0) return roleComparison;
+
+      return String(a.user.name || '').localeCompare(
+        String(b.user.name || ''),
+        'pt-BR',
+        { sensitivity: 'base' },
+      );
+    });
 
   function clearForm() {
     setEditingId(null);
@@ -928,19 +949,19 @@ export default function OfficialsPage() {
                   {filteredOfficials.map((official) => (
                     <div
                       key={official.id}
-                      className="border border-slate-200 rounded-3xl p-5 hover:border-[var(--cdb-blue)] transition bg-white"
+                      className="min-w-0 overflow-hidden border border-slate-200 rounded-3xl p-5 hover:border-[var(--cdb-blue)] transition bg-white"
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-2xl font-black">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-4">
+                          <div className="h-14 w-14 shrink-0 rounded-2xl bg-[var(--cdb-blue-soft)] text-[var(--cdb-blue)] flex items-center justify-center text-2xl font-black">
                             {official.user.name
                               ?.slice(0, 1)
                               .toUpperCase()}
                           </div>
 
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-xl font-black text-[var(--cdb-dark)]">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <h3 className="min-w-0 break-words text-xl font-black text-[var(--cdb-dark)]">
                                 {official.user.name}
                               </h3>
 
@@ -952,23 +973,23 @@ export default function OfficialsPage() {
                             </div>
 
                             {isAdmin && (
-                              <p className="text-slate-500">
+                              <p className="break-all text-slate-500">
                                 {official.user.email}
                               </p>
                             )}
 
-                            <div className="flex flex-wrap gap-2 mt-4">
-                              <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                            <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+                              <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                 📱 {official.phone || "Sem telefone"}
                               </span>
 
                               {isAdmin && (
                                 <>
-                                  <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                  <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                     🔑 PIX: {official.pixKey || "Não informado"}
                                   </span>
 
-                                  <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                  <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                     Perfil:{" "}
                                     {official.user.role === "ADMIN"
                                       ? "Administrador"
@@ -979,30 +1000,30 @@ export default function OfficialsPage() {
                                           : official.user.role}
                                   </span>
 
-                                  <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                  <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                     🪪 {official.documentType || "Doc"}:{" "}
                                     {official.documentNumber || "Não informado"}
                                   </span>
 
-                                  <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                  <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                     CPF:{" "}
                                     {official.cpf
                                       ? formatCpf(official.cpf)
                                       : "Não informado"}
                                   </span>
 
-                                  <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                  <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                     🎂 {formatDateBR(official.birthDate)}
                                   </span>
 
-                                  <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                  <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                     👕 {official.shirtSize || "Não informado"}
                                   </span>
                                 </>
                               )}
 
                               {official.address && (
-                                <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
+                                <span className="max-w-full break-words bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm border border-slate-200">
                                   📍 {official.address}
                                 </span>
                               )}
@@ -1012,7 +1033,7 @@ export default function OfficialsPage() {
 
                         {isAdmin && (
                           <span
-                            className={`px-4 py-2 rounded-2xl text-sm font-bold ${
+                            className={`w-fit shrink-0 px-4 py-2 rounded-2xl text-sm font-bold ${
                               official.active
                                 ? "bg-[var(--cdb-green-soft)] text-[var(--cdb-green)]"
                                 : "bg-red-100 text-red-600"
@@ -1026,7 +1047,7 @@ export default function OfficialsPage() {
                       </div>
 
                       {isAdmin && (
-                        <div className="flex gap-3 mt-6">
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                           <button
                             onClick={() => startEdit(official)}
                             className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold hover:brightness-90 transition shadow-sm"
