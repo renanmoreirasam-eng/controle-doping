@@ -13,6 +13,9 @@ type Match = {
   awayTeam: string;
   matchDate: string;
   status: string;
+  missionOrderFileName?: string | null;
+  missionOrderFileType?: string | null;
+  missionOrderFileData?: string | null;
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
 };
@@ -185,6 +188,21 @@ function ScalesPageContent() {
     return scale.confirmed === null;
   }
 
+  function isOwnScale(scale: Scale) {
+    return (
+      scale.official?.user?.id === loggedUserId ||
+      scale.official?.user?.email === loggedUserEmail
+    );
+  }
+
+  function hasMissionOrder(match?: Match | null) {
+    return Boolean(
+      match?.missionOrderFileData ||
+        match?.missionOrderFileName ||
+        match?.missionOrderFileType,
+    );
+  }
+
   const groupedScales = useMemo(() => {
     const map = new Map<string, ScaleGroup>();
 
@@ -286,17 +304,42 @@ function ScalesPageContent() {
       );
   }, [matches, groupedScales, editingMatchId]);
 
-  const completeScales = groupedScales.filter(
-    (group) => group.dco && group.assistant,
-  ).length;
+  const visibleScales = useMemo(() => {
+    if (isAdmin) return scales;
 
-  const partialScales = groupedScales.filter(
-    (group) => !group.dco || !group.assistant,
-  ).length;
+    return scales.filter((scale) => isOwnScale(scale));
+  }, [isAdmin, scales, loggedUserId, loggedUserEmail]);
 
-  const confirmedOfficials = scales.filter(
-    (scale) => scale.confirmed === true,
-  ).length;
+  const pendingScales = useMemo(() => {
+    return visibleScales.filter(
+      (scale) => scale.confirmed === null || scale.confirmed === undefined,
+    );
+  }, [visibleScales]);
+
+  const refusedScales = useMemo(() => {
+    return scales.filter((scale) => scale.confirmed === false);
+  }, [scales]);
+
+  const scalesWithoutMissionOrder = useMemo(() => {
+    const uniqueMatches = new Map<string, Match>();
+
+    for (const scale of scales) {
+      const match = scale.match;
+
+      if (!match?.id) continue;
+      if (match.status === "CONTROL_DONE") continue;
+      if (match.status === "CANCELED") continue;
+      if (hasMissionOrder(match)) continue;
+
+      uniqueMatches.set(match.id, match);
+    }
+
+    return Array.from(uniqueMatches.values());
+  }, [scales]);
+
+  const confirmedScales = useMemo(() => {
+    return visibleScales.filter((scale) => scale.confirmed === true);
+  }, [visibleScales]);
 
   function clearForm() {
     setEditingMatchId(null);
@@ -612,70 +655,186 @@ function ScalesPageContent() {
         </header>
 
         <section className="w-full max-w-full overflow-x-hidden p-4 lg:p-8">
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 lg:mb-8">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
+          <div
+            className={`mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mb-8 ${
+              isAdmin ? "xl:grid-cols-4" : "xl:grid-cols-2"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setScaleStatusFilter("PENDING")}
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                pendingScales.length > 0
+                  ? "bg-[var(--cdb-yellow-soft)] border-yellow-200"
+                  : "bg-white border-slate-200"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm font-semibold text-slate-500">
-                    Escalas criadas
+                  <p
+                    className={`text-sm font-semibold ${
+                      pendingScales.length > 0
+                        ? "text-[#9A7600]"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    Escalas pendentes
                   </p>
-                  <h2 className="mt-2 text-4xl font-black text-[var(--cdb-dark)]">
-                    {groupedScales.length}
+
+                  <h2
+                    className={`text-3xl lg:text-4xl font-black mt-2 ${
+                      pendingScales.length > 0
+                        ? "text-[#9A7600]"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {pendingScales.length}
                   </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    {isAdmin
+                      ? "Todas pendentes de confirmação"
+                      : "Minhas pendentes de confirmação"}
+                  </p>
                 </div>
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl">
+
+                <div
+                  className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                    pendingScales.length > 0
+                      ? "bg-yellow-100 text-[#9A7600]"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
                   📋
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-500">
-                    Completas
-                  </p>
-                  <h2 className="mt-2 text-4xl font-black text-green-600">
-                    {completeScales}
-                  </h2>
                 </div>
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-xl">
+              </div>
+            </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setScaleStatusFilter("REFUSED")}
+                className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                  refusedScales.length > 0
+                    ? "bg-red-50 border-red-200"
+                    : "bg-white border-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        refusedScales.length > 0
+                          ? "text-red-700"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      Escalas recusadas
+                    </p>
+
+                    <h2
+                      className={`text-3xl lg:text-4xl font-black mt-2 ${
+                        refusedScales.length > 0
+                          ? "text-red-700"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      {refusedScales.length}
+                    </h2>
+
+                    <p className="text-xs text-slate-500 mt-2">
+                      Clique para ver recusadas
+                    </p>
+                  </div>
+
+                  <div
+                    className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                      refusedScales.length > 0
+                        ? "bg-red-100 text-red-700"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    ⚠️
+                  </div>
+                </div>
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setScaleStatusFilter("")}
+                className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                  scalesWithoutMissionOrder.length > 0
+                    ? "bg-purple-50 border-purple-200"
+                    : "bg-white border-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        scalesWithoutMissionOrder.length > 0
+                          ? "text-purple-700"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      Sem ordem de missão
+                    </p>
+
+                    <h2
+                      className={`text-3xl lg:text-4xl font-black mt-2 ${
+                        scalesWithoutMissionOrder.length > 0
+                          ? "text-purple-700"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      {scalesWithoutMissionOrder.length}
+                    </h2>
+
+                    <p className="text-xs text-slate-500 mt-2">
+                      Escalas com ordem não anexada
+                    </p>
+                  </div>
+
+                  <div
+                    className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
+                      scalesWithoutMissionOrder.length > 0
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    📄
+                  </div>
+                </div>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setScaleStatusFilter("CONFIRMED")}
+              className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200 transition hover:shadow-md text-left"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Escalas confirmadas
+                  </p>
+
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
+                    {confirmedScales.length}
+                  </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    {isAdmin ? "Todas confirmadas" : "Minhas confirmadas"}
+                  </p>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
                   ✅
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-500">
-                    Incompletas
-                  </p>
-                  <h2 className="mt-2 text-4xl font-black text-yellow-600">
-                    {partialScales}
-                  </h2>
                 </div>
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-yellow-50 text-xl">
-                  ⚠️
-                </span>
               </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-500">
-                    Confirmações
-                  </p>
-                  <h2 className="mt-2 text-4xl font-black text-[var(--cdb-blue)]">
-                    {confirmedOfficials}
-                  </h2>
-                </div>
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl">
-                  👍
-                </span>
-              </div>
-            </div>
+            </button>
           </div>
 
           {isAdmin && (
