@@ -119,6 +119,76 @@ function canAccessMatchOperation(matchDate: string) {
   return todayOnly >= matchOnly;
 }
 
+function extractMissionCodeFromText(text: string) {
+  const normalizedText = text.replace(/\s+/g, ' ').trim();
+
+  const patterns = [
+    /ADAMS\s+Mission\s+Order\s*#\s*:?\s*(?:TO\s*[-–—:]?\s*)?(\d{6,})/i,
+    /Mission\s+Order\s*#\s*:?\s*(?:TO\s*[-–—:]?\s*)?(\d{6,})/i,
+    /Ordem\s+de\s+Miss[aã]o\s*#?\s*:?\s*(?:TO\s*[-–—:]?\s*)?(\d{6,})/i,
+    /C[oó]digo\s+da\s+Miss[aã]o\s*#?\s*:?\s*(?:TO\s*[-–—:]?\s*)?(\d{6,})/i,
+    /\bTO\s*[-–—:]?\s*(\d{6,})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedText.match(pattern);
+
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return '';
+}
+
+async function extractMissionCodeFromPdf(file: File) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const arrayBuffer = await file.arrayBuffer();
+
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/legacy/build/pdf.worker.mjs',
+    import.meta.url,
+  ).toString();
+
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(arrayBuffer),
+  });
+
+  const pdf = await loadingTask.promise;
+  const pageTexts: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+
+    const pageText = textContent.items
+      .map((item: any) => ('str' in item ? item.str : ''))
+      .join(' ');
+
+    pageTexts.push(pageText);
+
+    const missionCode = extractMissionCodeFromText(pageText);
+
+    if (missionCode) {
+      return missionCode;
+    }
+  }
+
+  return extractMissionCodeFromText(pageTexts.join(' '));
+}
+
+async function extractMissionCodeFromFile(file: File) {
+  const isPdf =
+    file.type === 'application/pdf' ||
+    file.name.toLowerCase().endsWith('.pdf');
+
+  if (!isPdf) {
+    return '';
+  }
+
+  return extractMissionCodeFromPdf(file);
+}
+
 function dataUrlToBlob(dataUrl: string) {
   const [header, base64Data] = dataUrl.split(',');
   const mimeType =
@@ -561,6 +631,21 @@ export default function MatchesPage() {
       dataUrl,
     });
     setRemoveMissionOrderFile(false);
+
+    try {
+      const extractedMissionCode = await extractMissionCodeFromFile(file);
+
+      if (extractedMissionCode && !missionCode.trim()) {
+        setMissionCode(extractedMissionCode);
+        showMessage(
+          'Ordem de missão identificada',
+          `O código da missão ${extractedMissionCode} foi preenchido automaticamente.`,
+          'success',
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao identificar a ordem de missão:', error);
+    }
   }
 
   function startEdit(match: Match) {
@@ -1536,60 +1621,112 @@ export default function MatchesPage() {
                       </div>
                     </div>
 
-                    {match.missionOrderFileData && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          downloadDataUrl(
-                            match.missionOrderFileData!,
-                            match.missionOrderFileName || 'ordem-de-missao',
-                          )
-                        }
-                        className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
-                      >
-                        📄 Ordem de Missão
-                      </button>
-                    )}
                   </div>
 
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {canAccessMatchOperation(match.matchDate) ? (
-                      <Link
-                        href={`/dashboard/matches/${match.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                      >
-                        🧪 Operação
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        title="A operação será liberada a partir do dia do jogo."
-                        className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
-                      >
-                        🧪 Operação
-                      </button>
+                  <div className="mt-5 space-y-3">
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+                      <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                        Operação
+                      </p>
+
+                      <div className="flex flex-wrap gap-2">
+                        {canAccessMatchOperation(match.matchDate) ? (
+                          <Link
+                            href={`/dashboard/matches/${match.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                          >
+                            🧪 Abrir operação
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            title="A operação será liberada a partir do dia do jogo."
+                            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
+                          >
+                            🧪 Operação
+                          </button>
+                        )}
+
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEdit(match)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                            >
+                              ✏️ Editar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => deleteMatch(match.id)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
+                            >
+                              🗑️ Excluir
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {(match.missionOrderFileData ||
+                      match.athleteListFileData ||
+                      match.finalDocumentFileData) && (
+                      <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
+                        <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
+                          Arquivos
+                        </p>
+
+                        <div className="flex flex-wrap gap-2">
+                          {match.missionOrderFileData && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadDataUrl(
+                                  match.missionOrderFileData!,
+                                  match.missionOrderFileName || 'ordem-de-missao',
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
+                            >
+                              📄 Ordem de missão
+                            </button>
+                          )}
+
+                          {match.athleteListFileData && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadDataUrl(
+                                  match.athleteListFileData!,
+                                  match.athleteListFileName || 'relacao-de-atletas',
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                            >
+                              👥 Relação de atletas
+                            </button>
+                          )}
+
+                          {match.finalDocumentFileData && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadDataUrl(
+                                  match.finalDocumentFileData!,
+                                  match.finalDocumentFileName || 'documentacao-do-jogo',
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                            >
+                              📎 Documentação do jogo
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     )}
 
-                    {isAdmin && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => startEdit(match)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                        >
-                          ✏️ Editar
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => deleteMatch(match.id)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                        >
-                          🗑️ Excluir
-                        </button>
-                      </>
-                    )}
                   </div>
                 </div>
               ))}
@@ -1685,59 +1822,110 @@ export default function MatchesPage() {
                       </td>
 
                       <td className="py-5 pr-4">
-                        <div className="flex flex-wrap gap-2">
-                          {canAccessMatchOperation(match.matchDate) ? (
-                            <Link
-                              href={`/dashboard/matches/${match.id}`}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                            >
-                              🧪 Operação
-                            </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled
-                              title="A operação será liberada a partir do dia do jogo."
-                              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
-                            >
-                              🧪 Operação
-                            </button>
+                        <div className="flex min-w-[260px] flex-col gap-3">
+                          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+                            <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                              Operação
+                            </p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {canAccessMatchOperation(match.matchDate) ? (
+                                <Link
+                                  href={`/dashboard/matches/${match.id}`}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                                >
+                                  🧪 Abrir operação
+                                </Link>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled
+                                  title="A operação será liberada a partir do dia do jogo."
+                                  className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
+                                >
+                                  🧪 Operação
+                                </button>
+                              )}
+
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => startEdit(match)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                                  >
+                                    ✏️ Editar
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteMatch(match.id)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
+                                  >
+                                    🗑️ Excluir
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {(match.missionOrderFileData ||
+                            match.athleteListFileData ||
+                            match.finalDocumentFileData) && (
+                            <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
+                              <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
+                                Arquivos
+                              </p>
+
+                              <div className="flex flex-wrap gap-2">
+                                {match.missionOrderFileData && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      downloadDataUrl(
+                                        match.missionOrderFileData!,
+                                        match.missionOrderFileName || 'ordem-de-missao',
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
+                                  >
+                                    📄 Ordem de missão
+                                  </button>
+                                )}
+
+                                {match.athleteListFileData && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      downloadDataUrl(
+                                        match.athleteListFileData!,
+                                        match.athleteListFileName || 'relacao-de-atletas',
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                                  >
+                                    👥 Relação de atletas
+                                  </button>
+                                )}
+
+                                {match.finalDocumentFileData && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      downloadDataUrl(
+                                        match.finalDocumentFileData!,
+                                        match.finalDocumentFileName || 'documentacao-do-jogo',
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                                  >
+                                    📎 Documentação do jogo
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           )}
 
-                          {match.missionOrderFileData && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                downloadDataUrl(
-                                  match.missionOrderFileData!,
-                                  match.missionOrderFileName || 'ordem-de-missao',
-                                )
-                              }
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
-                            >
-                              📄 Ordem de Missão
-                            </button>
-                          )}
-
-                          {isAdmin && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startEdit(match)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                              >
-                                ✏️ Editar
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => deleteMatch(match.id)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                              >
-                                🗑️ Excluir
-                              </button>
-                            </>
-                          )}
                         </div>
                       </td>
                     </tr>

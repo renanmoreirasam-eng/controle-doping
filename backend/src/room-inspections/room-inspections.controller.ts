@@ -6,16 +6,24 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+
 import { RoomInspectionsService } from './room-inspections.service';
 
 @Controller('room-inspections')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class RoomInspectionsController {
   constructor(
     private roomInspectionsService: RoomInspectionsService,
   ) {}
 
   @Post()
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
   async create(
     @Body()
     body: {
@@ -37,15 +45,24 @@ export class RoomInspectionsController {
   }
 
   @Get()
-  async findAll(@Query('matchId') matchId?: string) {
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async findAll(
+    @Query('matchId') matchId?: string,
+    @Query('stadiumId') stadiumId?: string,
+  ) {
     if (matchId) {
       return this.roomInspectionsService.findByMatch(matchId);
+    }
+
+    if (stadiumId) {
+      return this.roomInspectionsService.findByStadium(stadiumId);
     }
 
     return this.roomInspectionsService.findAll();
   }
 
   @Delete(':id')
+  @Roles('ADMIN')
   async remove(@Param('id') id: string) {
     return this.roomInspectionsService.remove(id);
   }

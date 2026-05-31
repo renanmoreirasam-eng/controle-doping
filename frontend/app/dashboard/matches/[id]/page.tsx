@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Sidebar } from '../../../../components/Sidebar';
 import { ConfirmModal } from '../../../../components/ConfirmModal';
@@ -17,12 +17,21 @@ type Match = {
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
   missionCode?: string;
+  missionOrderFileName?: string | null;
+  missionOrderFileType?: string | null;
+  missionOrderFileData?: string | null;
   athleteListFileName?: string | null;
   athleteListFileType?: string | null;
   athleteListFileData?: string | null;
   finalDocumentFileName?: string | null;
   finalDocumentFileType?: string | null;
   finalDocumentFileData?: string | null;
+};
+
+type PendingAthleteListFile = {
+  fileName: string;
+  fileType: string;
+  dataUrl: string;
 };
 
 type Scale = {
@@ -185,6 +194,17 @@ type ModalState = {
   onConfirm?: () => void | Promise<void>;
 };
 
+type ActionKey =
+  | 'checkin'
+  | 'mission-code'
+  | 'athlete-list-upload'
+  | 'start-match'
+  | 'save-draw'
+  | 'match-kits'
+  | 'finish-control'
+  | 'final-document-upload'
+  | 'substitutions';
+
 const initialModalState: ModalState = {
   open: false,
   title: '',
@@ -223,25 +243,39 @@ function dataUrlToBlob(dataUrl: string) {
   return new Blob([bytes], { type: mimeType });
 }
 
-function isIOSDevice() {
+function isMobileDevice() {
   if (typeof navigator === 'undefined') return false;
 
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
+  return /Android|iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function openFileInNewTab(blobUrl: string) {
+  const openedWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+
+  if (openedWindow) {
+    return true;
+  }
+
+  const link = document.createElement('a');
+
+  link.href = blobUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  return false;
 }
 
 function downloadDataUrl(dataUrl: string, fileName: string) {
   const blob = dataUrlToBlob(dataUrl);
   const blobUrl = window.URL.createObjectURL(blob);
 
-  if (isIOSDevice()) {
-    const openedWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
-
-    if (!openedWindow) {
-      window.location.href = blobUrl;
-    }
+  if (isMobileDevice()) {
+    openFileInNewTab(blobUrl);
 
     window.setTimeout(() => {
       window.URL.revokeObjectURL(blobUrl);
@@ -315,16 +349,48 @@ export default function MatchDetailsPage() {
     HOME: createEmptySubstitutionRows(),
     AWAY: createEmptySubstitutionRows(),
   });
+  const [showSubstitutionsForm, setShowSubstitutionsForm] = useState(false);
+  const [visibleSubstitutionRows, setVisibleSubstitutionRows] = useState<{
+    HOME: number;
+    AWAY: number;
+  }>({
+    HOME: 1,
+    AWAY: 1,
+  });
 
   const [roomItems, setRoomItems] = useState<RoomInspectionItem[]>(defaultRoomItems);
   const [roomNotes, setRoomNotes] = useState('');
   const [roomPhotos, setRoomPhotos] = useState<RoomInspectionPhoto[]>([]);
 
   const [missionCodeInput, setMissionCodeInput] = useState('');
+  const [missionCodeConfirmed, setMissionCodeConfirmed] = useState(false);
+  const [pendingAthleteListFile, setPendingAthleteListFile] =
+    useState<PendingAthleteListFile | null>(null);
   const [savingMissionCode, setSavingMissionCode] = useState(false);
   const [savingAthleteListFile, setSavingAthleteListFile] = useState(false);
   const [savingFinalDocumentFile, setSavingFinalDocumentFile] = useState(false);
   const [modal, setModal] = useState<ModalState>(initialModalState);
+  const [actionLoading, setActionLoading] = useState<ActionKey | null>(null);
+  const actionLockRef = useRef<ActionKey | null>(null);
+
+  const isAnyActionLoading = Boolean(actionLoading);
+
+  async function runExclusiveAction(
+    actionKey: ActionKey,
+    callback: () => Promise<void>,
+  ) {
+    if (actionLockRef.current) return;
+
+    actionLockRef.current = actionKey;
+    setActionLoading(actionKey);
+
+    try {
+      await callback();
+    } finally {
+      actionLockRef.current = null;
+      setActionLoading(null);
+    }
+  }
 
   function closeModal() {
     setModal(initialModalState);
@@ -425,6 +491,21 @@ export default function MatchDetailsPage() {
     }
 
     setSubstitutionForm(nextForm);
+
+    setVisibleSubstitutionRows({
+      HOME: Math.max(
+        1,
+        nextForm.HOME.filter(
+          (row) => row.playerOutNumber || row.playerInNumber,
+        ).length,
+      ),
+      AWAY: Math.max(
+        1,
+        nextForm.AWAY.filter(
+          (row) => row.playerOutNumber || row.playerInNumber,
+        ).length,
+      ),
+    });
   }, [substitutions]);
 
   useEffect(() => {
@@ -439,7 +520,11 @@ export default function MatchDetailsPage() {
 
   useEffect(() => {
     setMissionCodeInput(match?.missionCode || '');
-  }, [match?.missionCode]);
+
+    if (match?.status === 'IN_PROGRESS' || match?.status === 'CONTROL_DONE') {
+      setMissionCodeConfirmed(true);
+    }
+  }, [match?.missionCode, match?.status]);
   
   const hasRoomInspection = roomInspections.length > 0;
   const isControlDone = match?.status === 'CONTROL_DONE';
@@ -474,20 +559,22 @@ export default function MatchDetailsPage() {
     !hasRoomInspection;
 
   const hasMissionCode = Boolean(match?.missionCode?.trim());
+  const isMissionCodeConfirmed =
+    missionCodeConfirmed || isMatchInProgress || isControlDone;
 
   const canFillMissionCode =
     !!match &&
     !isControlDone &&
     isCheckedIn &&
     hasRoomInspection &&
-    !hasMissionCode;
+    !isMissionCodeConfirmed;
 
   const canStartMatch =
     !!match &&
     !isControlDone &&
     isCheckedIn &&
     hasRoomInspection &&
-    hasMissionCode &&
+    isMissionCodeConfirmed &&
     match.status !== 'IN_PROGRESS';
 
   const canFinishControl =
@@ -498,10 +585,9 @@ export default function MatchDetailsPage() {
     hasMatchKits;
 
   const canUploadAthleteListFile =
-    isAdmin &&
     !!match &&
     !isControlDone &&
-    isMatchInProgress;
+    isMissionCodeConfirmed;
 
   const canUploadFinalDocumentFile =
     isAdmin &&
@@ -550,6 +636,46 @@ export default function MatchDetailsPage() {
         [team]: rows,
       };
     });
+  }
+
+  function addSubstitutionRow(team: 'HOME' | 'AWAY') {
+    if (isControlDone) return;
+
+    setVisibleSubstitutionRows((prev) => ({
+      ...prev,
+      [team]: Math.min(5, prev[team] + 1),
+    }));
+  }
+
+  async function removeSubstitutionRow(team: 'HOME' | 'AWAY', index: number) {
+    if (isControlDone || isAnyActionLoading) return;
+
+    const nextRows = [...substitutionForm[team]];
+    nextRows.splice(index, 1);
+    nextRows.push({
+      playerOutNumber: '',
+      playerInNumber: '',
+    });
+
+    const nextForm = {
+      ...substitutionForm,
+      [team]: nextRows,
+    };
+
+    setSubstitutionForm(nextForm);
+
+    setVisibleSubstitutionRows((prev) => ({
+      ...prev,
+      [team]: Math.max(1, prev[team] - 1),
+    }));
+
+    await runExclusiveAction('substitutions', () =>
+      saveSubstitutions(nextForm),
+    );
+  }
+
+  function getSubstitutionsSummary(team: 'HOME' | 'AWAY') {
+    return substitutions.filter((substitution) => substitution.team === team);
   }
 
   function updateDrawForm(field: keyof DrawForm, value: string) {
@@ -743,12 +869,84 @@ export default function MatchDetailsPage() {
       });
 
       await loadMatch();
+      setMissionCodeConfirmed(true);
 
-      showMessage('Código salvo', 'Código da missão salvo com sucesso!', 'success');
+      showMessage('Código confirmado', 'Código da missão confirmado com sucesso!', 'success');
     } catch (error: any) {
-      showMessage('Erro ao salvar código', getErrorMessage(error, 'Erro ao salvar código da missão.'), 'danger');
+      showMessage('Erro ao confirmar código', getErrorMessage(error, 'Erro ao salvar código da missão.'), 'danger');
     } finally {
       setSavingMissionCode(false);
+    }
+  }
+
+  async function handleSelectAthleteListFile(files: FileList | null) {
+    const file = files?.[0];
+
+    if (!file) return;
+
+    const maxSizeInMb = 10;
+    const maxSizeInBytes = maxSizeInMb * 1024 * 1024;
+
+    if (file.size > maxSizeInBytes) {
+      showMessage(
+        'Arquivo muito grande',
+        `Selecione um arquivo de até ${maxSizeInMb} MB.`,
+        'warning',
+      );
+      return;
+    }
+
+    try {
+      const fileData = await readFileAsDataUrl(file);
+
+      setPendingAthleteListFile({
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        dataUrl: fileData,
+      });
+    } catch (error: any) {
+      showMessage(
+        'Erro ao preparar arquivo',
+        getErrorMessage(error, 'Erro ao preparar pré-visualização do arquivo.'),
+        'danger',
+      );
+    }
+  }
+
+  function cancelAthleteListPreview() {
+    if (savingAthleteListFile || isAnyActionLoading) return;
+    setPendingAthleteListFile(null);
+  }
+
+  async function confirmAthleteListUpload() {
+    if (!pendingAthleteListFile) return;
+
+    try {
+      setSavingAthleteListFile(true);
+
+      await api.patch(`/matches/${matchId}/documents`, {
+        athleteListFileName: pendingAthleteListFile.fileName,
+        athleteListFileType: pendingAthleteListFile.fileType,
+        athleteListFileData: pendingAthleteListFile.dataUrl,
+      });
+
+      setPendingAthleteListFile(null);
+
+      await loadMatch();
+
+      showMessage(
+        'Relação salva',
+        'Relação de atletas salva com sucesso!',
+        'success',
+      );
+    } catch (error: any) {
+      showMessage(
+        'Erro ao salvar relação',
+        getErrorMessage(error, 'Erro ao salvar relação de atletas.'),
+        'danger',
+      );
+    } finally {
+      setSavingAthleteListFile(false);
     }
   }
 
@@ -1178,14 +1376,19 @@ export default function MatchDetailsPage() {
     }
   }
 
-  async function saveSubstitutions() {
+  async function saveSubstitutions(
+    formToSave: {
+      HOME: SubstitutionFormRow[];
+      AWAY: SubstitutionFormRow[];
+    } = substitutionForm,
+  ) {
     if (isControlDone) {
       showMessage('Controle bloqueado', 'Controle já realizado. Não é possível alterar informações.', 'warning');
       return;
     }
 
     const rowsToSave = (['HOME', 'AWAY'] as const).flatMap((team) =>
-      substitutionForm[team]
+      formToSave[team]
         .map((row, index) => ({
           team,
           index,
@@ -1315,7 +1518,8 @@ function formatTimeOnly(date: string) {
                       </span>
                     )}
                   </div>
-                </div>
+
+                                  </div>
 
                 <div className="flex flex-row flex-wrap gap-3 lg:flex-col lg:items-end">
                   <span
@@ -1337,6 +1541,96 @@ function formatTimeOnly(date: string) {
             </div>
           </div>
         </header>
+
+        {isControlDone && (
+          <div className="px-4 pb-4 lg:px-8">
+            <div className="rounded-3xl border border-green-200 bg-green-50 p-5 text-green-800 shadow-sm lg:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-black">
+                    Controle realizado
+                  </h2>
+
+                  <p className="mt-1 text-sm font-medium">
+                    As informações operacionais deste jogo estão bloqueadas para edição.
+                  </p>
+                </div>
+
+                <span className="w-fit rounded-full border border-green-200 bg-green-100 px-3 py-1 text-xs font-black text-green-700">
+                  Finalizado
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="px-4 pb-4 lg:px-8">
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm lg:p-5">
+                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                          Oficiais escalados
+                        </p>
+
+                        <p className="mt-1 text-sm font-semibold text-slate-600">
+                          Equipe responsável pela operação
+                        </p>
+                      </div>
+
+                      <span className="w-fit rounded-2xl bg-white px-3 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
+                        {scales.length} oficial(is)
+                      </span>
+                    </div>
+
+                    {scales.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {scales.map((scale) => (
+                          <div
+                            key={scale.id}
+                            className="rounded-2xl border border-slate-200 bg-white p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                  {scale.role === 'DCO' ? 'DCO' : 'Assistente'}
+                                </p>
+
+                                <p className="mt-1 truncate text-sm font-black text-slate-900">
+                                  {scale.official.user.name}
+                                </p>
+
+                                <p className="mt-1 truncate text-xs text-slate-500">
+                                  {scale.official.user.email}
+                                </p>
+                              </div>
+
+                              <span
+                                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                  scale.confirmed === true
+                                    ? 'bg-green-100 text-green-700'
+                                    : scale.confirmed === false
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-yellow-100 text-yellow-700'
+                                }`}
+                              >
+                                {scale.confirmed === true
+                                  ? 'Confirmado'
+                                  : scale.confirmed === false
+                                    ? 'Recusado'
+                                    : 'Pendente'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm font-semibold text-slate-500">
+                        Nenhum oficial escalado para este jogo.
+                      </div>
+                    )}
+                  </div>
+
+        </div>
 
         <section className="grid grid-cols-1 gap-4 px-4 pb-8 lg:gap-6 lg:px-8 xl:grid-cols-3">
 <details open className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:col-span-3">
@@ -1392,10 +1686,18 @@ function formatTimeOnly(date: string) {
 
                   {canDoCheckIn && (
                     <button
-                      onClick={() => updateMatchStatus('SCALE_ACCEPTED')}
-                      className="mt-4 w-full bg-[var(--cdb-blue)] text-white hover:brightness-95 py-3 rounded-2xl font-semibold transition"
+                      type="button"
+                      onClick={() =>
+                        runExclusiveAction('checkin', () =>
+                          updateMatchStatus('SCALE_ACCEPTED'),
+                        )
+                      }
+                      disabled={isAnyActionLoading}
+                      className="mt-4 w-full bg-[var(--cdb-blue)] text-white hover:brightness-95 py-3 rounded-2xl font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Fazer check-in no estádio
+                      {actionLoading === 'checkin'
+                        ? 'Registrando check-in...'
+                        : 'Fazer check-in no estádio'}
                     </button>
                   )}
                 </div>
@@ -1416,7 +1718,9 @@ function formatTimeOnly(date: string) {
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
-                        Realize o checklist da sala antes de marcar o jogo em andamento.
+                        {hasRoomInspection
+                          ? 'Checklist realizado. A inspeção da sala foi registrada para esta partida.'
+                          : 'Realize o checklist da sala antes de marcar o jogo em andamento.'}
                       </p>
                     </div>
 
@@ -1440,6 +1744,17 @@ function formatTimeOnly(date: string) {
                     </Link>
                   )}
 
+                  {hasRoomInspection && (
+                    <div className="mt-4 flex justify-end">
+                      <Link
+                        href={`/dashboard/matches/${matchId}/room-inspection`}
+                        className="inline-flex w-fit items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+                      >
+                        Visualizar inspeção
+                      </Link>
+                    </div>
+                  )}
+
                   {!isCheckedIn && !isControlDone && (
                     <p className="mt-4 text-xs text-slate-500">
                       Aguardando check-in no estádio para liberar a inspeção da sala.
@@ -1449,7 +1764,7 @@ function formatTimeOnly(date: string) {
 
                 <div
                   className={`rounded-2xl border p-4 ${
-                    hasMissionCode
+                    isMissionCodeConfirmed
                       ? 'bg-green-50 border-green-200'
                       : canFillMissionCode
                         ? 'bg-blue-50 border-blue-200'
@@ -1463,13 +1778,19 @@ function formatTimeOnly(date: string) {
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
-                        Informe o código da missão antes de marcar o jogo em andamento.
+                        {isMissionCodeConfirmed
+                          ? 'Código da missão confirmado pelo DCO.'
+                          : 'Revise o código da missão, ajuste se necessário e confirme para liberar as próximas etapas.'}
                       </p>
                     </div>
 
-                    {hasMissionCode ? (
+                    {isMissionCodeConfirmed ? (
                       <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                        Informado
+                        Confirmado
+                      </span>
+                    ) : hasMissionCode ? (
+                      <span className="shrink-0 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Aguardando confirmação
                       </span>
                     ) : (
                       <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
@@ -1478,38 +1799,88 @@ function formatTimeOnly(date: string) {
                     )}
                   </div>
 
-                  {hasMissionCode && (
+                  {isMissionCodeConfirmed && hasMissionCode && (
                     <div className="mt-4 rounded-2xl border border-green-100 bg-white px-4 py-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                        Código registrado
-                      </p>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                            Código confirmado
+                          </p>
 
-                      <p className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
-                        {match.missionCode}
-                      </p>
+                          <p className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
+                            {match.missionCode}
+                          </p>
+                        </div>
+
+                        {match.missionOrderFileData && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadDataUrl(
+                                match.missionOrderFileData!,
+                                match.missionOrderFileName || 'ordem-de-missao',
+                              )
+                            }
+                            className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                          >
+                            Baixar ordem de missão
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 
                   {canFillMissionCode && (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                       <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                        Código da missão *
+                        Código da missão para confirmação *
                       </label>
 
                       <input
                         value={missionCodeInput}
                         onChange={(event) => setMissionCodeInput(event.target.value)}
-                        placeholder="Informe o código da missão"
+                        placeholder="Revise ou informe o código da missão"
                         className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100"
                       />
 
+                      {hasMissionCode && !isMissionCodeConfirmed && (
+                        <p className="mt-2 text-xs text-yellow-700">
+                          Código preenchido automaticamente. Revise e confirme antes de seguir.
+                        </p>
+                      )}
+
+                      {match.missionOrderFileData && (
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadDataUrl(
+                                match.missionOrderFileData!,
+                                match.missionOrderFileName || 'ordem-de-missao',
+                              )
+                            }
+                            className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                          >
+                            Baixar ordem de missão
+                          </button>
+                        </div>
+                      )}
+
                       <button
                         type="button"
-                        onClick={handleSaveMissionCode}
-                        disabled={savingMissionCode || !missionCodeInput.trim()}
+                        onClick={() =>
+                          runExclusiveAction('mission-code', handleSaveMissionCode)
+                        }
+                        disabled={
+                          savingMissionCode ||
+                          !missionCodeInput.trim() ||
+                          isAnyActionLoading
+                        }
                         className="mt-4 w-full rounded-2xl bg-[var(--cdb-blue)] py-3 font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {savingMissionCode ? 'Salvando código...' : 'Salvar código da missão'}
+                        {actionLoading === 'mission-code' || savingMissionCode
+                          ? 'Confirmando código...'
+                          : 'Confirmar código da missão'}
                       </button>
                     </div>
                   )}
@@ -1529,6 +1900,182 @@ function formatTimeOnly(date: string) {
 
                 <div
                   className={`rounded-2xl border p-4 ${
+                    match.athleteListFileName
+                      ? 'bg-green-50 border-green-200'
+                      : canUploadAthleteListFile
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        4. Relação de atletas
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Envie uma foto ou PDF da relação de atletas antes do sorteio.
+                      </p>
+                    </div>
+
+                    {match.athleteListFileName ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Enviada
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {match.athleteListFileName && match.athleteListFileData && (
+                    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-green-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                          Arquivo enviado
+                        </p>
+
+                        <p className="mt-1 text-sm font-black text-slate-900">
+                          {match.athleteListFileName}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadDataUrl(
+                            match.athleteListFileData!,
+                            match.athleteListFileName || 'relacao-de-atletas',
+                          )
+                        }
+                        className="inline-flex items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                      >
+                        Baixar relação de atletas
+                      </button>
+                    </div>
+                  )}
+
+                  {canUploadAthleteListFile && !match.athleteListFileName ? (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      {!pendingAthleteListFile ? (
+                        <>
+                          <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                            Relação de atletas
+                          </label>
+
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            disabled={
+                              savingAthleteListFile ||
+                              isAnyActionLoading
+                            }
+                            onChange={(event) => {
+                              handleSelectAthleteListFile(
+                                event.currentTarget.files,
+                              );
+                              event.currentTarget.value = '';
+                            }}
+                            className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+
+                          <p className="mt-2 text-xs text-slate-500">
+                            Selecione o arquivo para pré-visualizar antes de confirmar. Formatos aceitos: PDF, JPG ou PNG. Tamanho máximo: 10 MB.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                                Pré-visualização da relação
+                              </p>
+
+                              <p className="mt-1 text-sm font-black text-slate-900">
+                                {pendingAthleteListFile.fileName}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadDataUrl(
+                                  pendingAthleteListFile.dataUrl,
+                                  pendingAthleteListFile.fileName,
+                                )
+                              }
+                              className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                            >
+                              Abrir pré-visualização
+                            </button>
+                          </div>
+
+                          {pendingAthleteListFile.fileType.startsWith('image/') && (
+                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                              <img
+                                src={pendingAthleteListFile.dataUrl}
+                                alt={pendingAthleteListFile.fileName}
+                                className="max-h-80 w-full object-contain"
+                              />
+                            </div>
+                          )}
+
+                          {pendingAthleteListFile.fileType === 'application/pdf' && (
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                              PDF selecionado. Clique em <strong>Abrir pré-visualização</strong> para conferir o arquivo antes de confirmar.
+                            </div>
+                          )}
+
+                          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <button
+                              type="button"
+                              onClick={cancelAthleteListPreview}
+                              disabled={
+                                savingAthleteListFile ||
+                                isAnyActionLoading
+                              }
+                              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Cancelar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                runExclusiveAction(
+                                  'athlete-list-upload',
+                                  confirmAthleteListUpload,
+                                )
+                              }
+                              disabled={
+                                savingAthleteListFile ||
+                                isAnyActionLoading
+                              }
+                              className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {actionLoading === 'athlete-list-upload' ||
+                              savingAthleteListFile
+                                ? 'Confirmando envio...'
+                                : 'Confirmar envio'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-xs text-slate-500">
+                      {match.athleteListFileName
+                        ? 'Arquivo enviado. Não é possível enviar novamente após a confirmação.'
+                        : isControlDone
+                          ? 'Upload indisponível após o controle ser concluído.'
+                          : 'Upload disponível após confirmar o código da missão.'}
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
                     isMatchInProgress
                       ? 'bg-green-50 border-green-200'
                       : canStartMatch
@@ -1539,7 +2086,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        4. Jogo em andamento
+                        5. Jogo em andamento
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1558,11 +2105,243 @@ function formatTimeOnly(date: string) {
 
                   {canStartMatch && (
                     <button
-                      onClick={() => updateMatchStatus('IN_PROGRESS')}
-                      className="mt-4 w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-2xl font-semibold transition"
+                      type="button"
+                      onClick={() =>
+                        runExclusiveAction('start-match', () =>
+                          updateMatchStatus('IN_PROGRESS'),
+                        )
+                      }
+                      disabled={isAnyActionLoading}
+                      className="mt-4 w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-2xl font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Marcar jogo em andamento
+                      {actionLoading === 'start-match'
+                        ? 'Marcando jogo...'
+                        : 'Marcar jogo em andamento'}
                     </button>
+                  )}
+
+                  {(isMatchInProgress || substitutions.length > 0 || isControlDone) && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                            Substituições
+                          </p>
+
+                          <p className="mt-1 text-sm text-slate-600">
+                            {substitutions.length > 0
+                              ? `${substitutions.length} substituição(ões) registrada(s).`
+                              : 'Nenhuma substituição registrada.'}
+                          </p>
+                        </div>
+
+                        {!isControlDone && isMatchInProgress && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowSubstitutionsForm((current) => !current)
+                            }
+                            className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                          >
+                            {showSubstitutionsForm
+                              ? 'Ocultar substituições'
+                              : substitutions.length > 0
+                                ? 'Ver/editar substituições'
+                                : 'Registrar substituições'}
+                          </button>
+                        )}
+                      </div>
+
+                      {substitutions.length > 0 && !showSubstitutionsForm && (
+                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {(['HOME', 'AWAY'] as const).map((team) => {
+                            const teamSubstitutions = getSubstitutionsSummary(team);
+
+                            return (
+                              <div
+                                key={`summary-${team}`}
+                                className="rounded-2xl border border-slate-100 bg-slate-50 p-3"
+                              >
+                                <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                                  {getTeamName(team)}
+                                </p>
+
+                                {teamSubstitutions.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {teamSubstitutions.map((substitution, index) => (
+                                      <p
+                                        key={substitution.id || `${team}-${index}`}
+                                        className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-100"
+                                      >
+                                        Nº {substitution.playerOutNumber} saiu → Nº{' '}
+                                        {substitution.playerInNumber} entrou
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-slate-400">
+                                    Nenhuma substituição registrada.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {showSubstitutionsForm && !isControlDone && isMatchInProgress && (
+                        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                            {(['HOME', 'AWAY'] as const).map((team) => (
+                              <div
+                                key={`form-${team}`}
+                                className="rounded-2xl border border-slate-200 bg-white p-4"
+                              >
+                                <div className="mb-4 flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                                      {team === 'HOME'
+                                        ? 'Equipe mandante'
+                                        : 'Equipe visitante'}
+                                    </p>
+
+                                    <h3 className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
+                                      {getTeamName(team)}
+                                    </h3>
+                                  </div>
+
+                                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                                    Máx. 5
+                                  </span>
+                                </div>
+
+                                <div className="space-y-3">
+                                  {substitutionForm[team]
+                                    .slice(0, visibleSubstitutionRows[team])
+                                    .map((row, index) => (
+                                      <div
+                                        key={`${team}-${index}`}
+                                        className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                                      >
+                                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                                            Substituição {index + 1}
+                                          </p>
+
+                                          <div className="flex flex-wrap gap-2">
+                                            {visibleSubstitutionRows[team] > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  removeSubstitutionRow(team, index)
+                                                }
+                                                disabled={isAnyActionLoading}
+                                                className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                              >
+                                                {actionLoading === 'substitutions'
+                                                  ? 'Salvando...'
+                                                  : 'Remover'}
+                                              </button>
+                                            )}
+
+                                            <button
+                                              type="button"
+                                              disabled={isAnyActionLoading}
+                                              onClick={() =>
+                                                runExclusiveAction(
+                                                  'substitutions',
+                                                  saveSubstitutions,
+                                                )
+                                              }
+                                              className="rounded-xl bg-[var(--cdb-blue)] px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                              {actionLoading === 'substitutions'
+                                                ? 'Salvando...'
+                                                : 'Salvar alterações'}
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                          <div>
+                                            <input
+                                              type="tel"
+                                              inputMode="numeric"
+                                              pattern="[0-9]*"
+                                              autoComplete="off"
+                                              className="w-full rounded-xl border border-slate-200 bg-white p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                              placeholder="Ex: 10"
+                                              value={row.playerOutNumber}
+                                              disabled={isControlDone}
+                                              onChange={(event) =>
+                                                updateSubstitutionForm(
+                                                  team,
+                                                  index,
+                                                  'playerOutNumber',
+                                                  event.target.value.replace(/\D/g, ''),
+                                                )
+                                              }
+                                            />
+                                            <label className="mt-2 block text-xs font-bold text-slate-600">
+                                              Nº saiu
+                                            </label>
+                                          </div>
+
+                                          <div>
+                                            <input
+                                              type="tel"
+                                              inputMode="numeric"
+                                              pattern="[0-9]*"
+                                              autoComplete="off"
+                                              className="w-full rounded-xl border border-slate-200 bg-white p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                                              placeholder="Ex: 18"
+                                              value={row.playerInNumber}
+                                              disabled={isControlDone}
+                                              onChange={(event) =>
+                                                updateSubstitutionForm(
+                                                  team,
+                                                  index,
+                                                  'playerInNumber',
+                                                  event.target.value.replace(/\D/g, ''),
+                                                )
+                                              }
+                                            />
+                                            <label className="mt-2 block text-xs font-bold text-slate-600">
+                                              Nº entrou
+                                            </label>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                </div>
+
+                                {visibleSubstitutionRows[team] < 5 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => addSubstitutionRow(team)}
+                                    className="mt-3 w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                                  >
+                                    + Adicionar substituição
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-4 rounded-2xl border border-blue-100 bg-white p-3">
+                            <p className="text-sm text-slate-500">
+                              Campos vazios serão ignorados. Preencha sempre o número que saiu e o número que entrou. Use o botão <strong>Salvar alterações</strong> ao lado da substituição para registrar.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {isControlDone && substitutions.length === 0 && (
+                        <p className="mt-4 text-xs text-slate-500">
+                          Controle realizado sem substituições registradas.
+                        </p>
+                      )}
+                    </div>
                   )}
 
                   {!isCheckedIn && !isControlDone && (
@@ -1581,7 +2360,7 @@ function formatTimeOnly(date: string) {
 
                   {isCheckedIn && hasRoomInspection && !hasMissionCode && !isControlDone && (
                     <p className="mt-4 text-xs text-slate-500">
-                      Aguardando código da missão para liberar o jogo em andamento.
+                      Aguardando confirmação do código da missão para liberar o jogo em andamento.
                     </p>
                   )}
                 </div>
@@ -1598,7 +2377,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        5. Sorteio realizado
+                        6. Sorteio realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -1619,783 +2398,74 @@ function formatTimeOnly(date: string) {
 
                   {renderOperationalLog('DRAW_DONE')}
 
-                  {!hasDrawDone && isMatchInProgress && !isControlDone && (
-                    <p className="mt-4 text-xs text-purple-700">
-                      Após salvar os atletas sorteados, esta etapa ficará como sorteio realizado.
-                    </p>
-                  )}
-
-                  {!isMatchInProgress && !isControlDone && (
-                    <p className="mt-4 text-xs text-slate-500">
-                      Aguardando o jogo ser marcado como em andamento.
-                    </p>
-                  )}
-                </div>
-
-                <div
-                  className={`rounded-2xl border p-4 ${
-                    hasMatchKits
-                      ? 'bg-green-50 border-green-200'
-                      : canManageMatchKits
-                        ? 'bg-blue-50 border-blue-200'
-                        : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        6. Kits utilizados no controle
-                      </p>
-
-                      <p className="text-xs text-slate-500 mt-1">
-                        Registre os kits utilizados nesta partida. Ao salvar, eles sairão automaticamente da responsabilidade do DCO e ficarão marcados como utilizados.
-                      </p>
-                    </div>
-
-                    {hasMatchKits ? (
-                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                        {matchKits.length} utilizado(s)
-                      </span>
-                    ) : (
-                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
-                        Pendente
-                      </span>
-                    )}
-                  </div>
-
-                  {matchKits.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      {matchKits.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3"
-                        >
-                          <div>
-                            <p className="text-sm font-black text-slate-900">
-                              Kit {item.kit.number}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {item.official?.user?.name
-                                ? `Registrado por ${item.official.user.name}`
-                                : 'Kit utilizado nesta partida'}
-                            </p>
-                          </div>
-
-                          {!isControlDone && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveMatchKit(item.kitId)}
-                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                            >
-                              Remover
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {canManageMatchKits && (
-                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                        Meus kits disponíveis
-                      </p>
-
-                      {availableKitsForMatch.length === 0 ? (
-                        <p className="mt-3 text-sm text-slate-500">
-                          Nenhum kit disponível para o seu usuário. Solicite o repasse ao administrador.
-                        </p>
-                      ) : (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {availableKitsForMatch.map((kit) => {
-                            const checked = selectedKitIds.includes(kit.id);
-
-                            return (
-                              <label
-                                key={kit.id}
-                                className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition ${
-                                  checked
-                                    ? 'border-[var(--cdb-blue)] bg-blue-50 text-[var(--cdb-blue)]'
-                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleKitSelection(kit.id)}
-                                  className="h-4 w-4 accent-[var(--cdb-blue)]"
-                                />
-                                Kit {kit.number}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={handleSaveMatchKits}
-                        disabled={savingKits || selectedKitIds.length === 0}
-                        className="mt-4 w-full rounded-2xl bg-[var(--cdb-blue)] py-3 font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {savingKits ? 'Salvando kits...' : 'Registrar kits utilizados'}
-                      </button>
-                    </div>
-                  )}
-
-                  {!canManageMatchKits && !isControlDone && (
-                    <p className="mt-4 text-xs text-slate-500">
-                      Aguardando jogo em andamento e sorteio realizado para liberar o registro de kits utilizados.
-                    </p>
-                  )}
-                </div>
-
-                <div
-                  className={`rounded-2xl border p-4 ${
-                    isControlDone
-                      ? 'bg-green-50 border-green-200'
-                      : canFinishControl
-                        ? 'bg-emerald-50 border-emerald-200'
-                        : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        7. Controle realizado
-                      </p>
-
-                      <p className="text-xs text-slate-500 mt-1">
-                        Finaliza a operação e bloqueia alterações.
-                      </p>
-                    </div>
-
-                    {isControlDone && (
-                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                        Finalizado
-                      </span>
-                    )}
-                  </div>
-
-                  {renderOperationalLog('CONTROL_DONE')}
-
-                  {canFinishControl && (
-                    <button
-                      onClick={() => updateMatchStatus('CONTROL_DONE')}
-                      className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-semibold transition"
-                    >
-                      Marcar controle realizado
-                    </button>
-                  )}
-
-                  {!canFinishControl && !isControlDone && (
-                    <p className="mt-4 text-xs text-slate-500">
-                      Aguardando jogo em andamento, sorteio realizado e kits utilizados registrados.
-                    </p>
-                  )}
-                </div>
-
-                <div
-                  className={`rounded-2xl border p-4 ${
-                    match.finalDocumentFileName
-                      ? 'bg-green-50 border-green-200'
-                      : isControlDone
-                        ? 'bg-blue-50 border-blue-200'
-                        : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        8. Documentos do jogo
-                      </p>
-
-                      <p className="text-xs text-slate-500 mt-1">
-                        Após finalizar o controle, envie o documento final do jogo para consulta posterior.
-                      </p>
-                    </div>
-
-                    {match.finalDocumentFileName ? (
-                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                        Enviado
-                      </span>
-                    ) : (
-                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
-                        Pendente
-                      </span>
-                    )}
-                  </div>
-
-                  {match.finalDocumentFileName && match.finalDocumentFileData && (
-                    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-green-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                          Documento enviado
-                        </p>
-
-                        <p className="mt-1 text-sm font-black text-slate-900">
-                          {match.finalDocumentFileName}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          downloadDataUrl(
-                            match.finalDocumentFileData!,
-                            match.finalDocumentFileName || 'documento-final-jogo',
-                          )
-                        }
-                        className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
-                      >
-                        Baixar documento
-                      </button>
-                    </div>
-                  )}
-
-                  {canUploadFinalDocumentFile && (
-                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                      <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                        Documento final do jogo
-                      </label>
-
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        disabled={savingFinalDocumentFile}
-                        onChange={(event) => {
-                          handleUploadMatchDocument('finalDocument', event.currentTarget.files);
-                          event.currentTarget.value = '';
-                        }}
-                        className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      />
-
-                      <p className="mt-2 text-xs text-slate-500">
-                        Formatos aceitos: PDF, JPG ou PNG. Tamanho máximo: 10 MB.
-                      </p>
-                    </div>
-                  )}
-
-                  {!isControlDone && (
-                    <p className="mt-4 text-xs text-slate-500">
-                      O upload dos documentos finais será liberado após o controle realizado.
-                    </p>
-                  )}
-                </div>
-
-                {isControlDone && (
-                  <div className="bg-green-50 border border-green-200 text-green-700 rounded-2xl p-4 text-sm">
-                    Controle já realizado. Informações operacionais bloqueadas.
-                  </div>
-                )}
-              </div>
-              </div>
-            </details>
-
-          <div className="xl:col-span-3 space-y-4 lg:space-y-6">
-            <details open className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                <div>
-                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                    Informações da partida
-                  </h2>
-
-                  <p className="text-sm text-slate-500 mt-1">
-                    Dados principais, local, status e atletas sorteados.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                    ⌄
-                  </span>
-                </div>
-              </summary>
-
-              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
-  <div className="grid md:grid-cols-2 gap-4">
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
-      <p className="text-slate-500 text-sm">
-        Código da missão
-      </p>
-
-      <strong className="text-lg">
-        {match.missionCode || 'Não informado'}
-      </strong>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
-      <p className="text-slate-500 text-sm">
-        Campeonato
-      </p>
-
-      <strong className="text-lg">
-        {match.championship.name}
-      </strong>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
-      <p className="text-slate-500 text-sm">
-        Data do jogo
-      </p>
-
-      <strong className="text-lg">
-        {formatDateOnly(match.matchDate)}
-      </strong>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
-      <p className="text-slate-500 text-sm">
-        Horário do jogo
-      </p>
-
-      <strong className="text-lg">
-        {formatTimeOnly(match.matchDate)}
-      </strong>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
-      <p className="text-slate-500 text-sm">
-        Estádio
-      </p>
-
-      <strong className="text-lg">
-        🏟️ {match.stadium.name}
-      </strong>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50">
-      <p className="text-slate-500 text-sm">
-        Cidade
-      </p>
-
-      <strong className="text-lg">
-        {match.stadium.city}/{match.stadium.state}
-      </strong>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
-      <p className="text-slate-500 text-sm">
-        Status
-      </p>
-
-      <span
-        className={`${getStatusClass(
-          match.status,
-        )} inline-block mt-2 px-3 py-1 rounded-full text-sm font-semibold`}
-      >
-        {getStatusLabel(match.status)}
-      </span>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-slate-500 text-sm">
-            Relação de atletas
-          </p>
-
-          <strong className="text-lg">
-            {match.athleteListFileName || 'Não enviada'}
-          </strong>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Foto ou arquivo da relação de atletas vinculada ao sorteio.
-          </p>
-        </div>
-
-        {match.athleteListFileName && match.athleteListFileData && (
-          <button
-            type="button"
-            onClick={() =>
-              downloadDataUrl(
-                match.athleteListFileData!,
-                match.athleteListFileName || 'relacao-de-atletas',
-              )
-            }
-            className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
-          >
-            Baixar relação
-          </button>
-        )}
-      </div>
-
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-slate-500 text-sm">
-            Documento final do jogo
-          </p>
-
-          <strong className="text-lg">
-            {match.finalDocumentFileName || 'Não enviado'}
-          </strong>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Documento final anexado após o controle realizado.
-          </p>
-        </div>
-
-        {match.finalDocumentFileName && match.finalDocumentFileData && (
-          <button
-            type="button"
-            onClick={() =>
-              downloadDataUrl(
-                match.finalDocumentFileData!,
-                match.finalDocumentFileName || 'documento-final-jogo',
-              )
-            }
-            className="inline-flex w-fit items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
-          >
-            Baixar documento
-          </button>
-        )}
-      </div>
-    </div>
-
-    <div className={`rounded-3xl border p-5 md:col-span-2 ${
-      hasRoomInspection
-        ? 'border-green-200 bg-green-50'
-        : 'border-slate-200 bg-slate-50'
-    }`}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-slate-500 text-sm">
-            Inspeção da sala
-          </p>
-
-          <strong className={`text-lg ${
-            hasRoomInspection ? 'text-green-800' : 'text-slate-800'
-          }`}>
-            {hasRoomInspection ? 'Checklist realizado' : 'Checklist ainda pendente'}
-          </strong>
-
-          <p className="mt-1 text-sm text-slate-500">
-            {hasRoomInspection
-              ? 'A inspeção da sala foi registrada para esta partida.'
-              : 'A inspeção será liberada no status operacional após o check-in.'}
-          </p>
-        </div>
-
-        {hasRoomInspection && (
-          <Link
-            href={`/dashboard/matches/${matchId}/room-inspection`}
-            className="inline-flex w-fit items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
-          >
-            Visualizar inspeção
-          </Link>
-        )}
-      </div>
-    </div>
-
-    <div className="border border-slate-200 rounded-3xl p-5 bg-slate-50 md:col-span-2">
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-slate-500 text-sm">
-            Oficiais escalados
-          </p>
-
-          <strong className="text-lg">
-            Equipe responsável pela operação
-          </strong>
-        </div>
-
-        <span className="bg-slate-100 px-3 py-1 rounded-2xl text-xs font-semibold text-slate-700 w-fit">
-          {scales.length} oficiais
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {scales.map((scale) => (
-          <div
-            key={scale.id}
-            className="border border-slate-200 rounded-2xl p-4 bg-white"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xl">
-                  {scale.role === 'DCO' ? '🧑' : '👤'}
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                    {scale.role === 'DCO' ? 'DCO' : 'Assistente'}
-                  </p>
-
-                  <h3 className="mt-1 font-black text-slate-900">
-                    {scale.official.user.name}
-                  </h3>
-
-                  <p className="mt-1 text-xs text-slate-500">
-                    {scale.official.user.email}
-                  </p>
-                </div>
-              </div>
-
-              <span
-                className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
-                  scale.confirmed === true
-                    ? 'bg-green-100 text-green-700'
-                    : scale.confirmed === false
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-yellow-100 text-yellow-700'
-                }`}
-              >
-                {scale.confirmed === true
-                  ? 'Confirmado'
-                  : scale.confirmed === false
-                    ? 'Recusado'
-                    : 'Pendente'}
-              </span>
-            </div>
-          </div>
-        ))}
-
-        {scales.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center md:col-span-2">
-            <div className="mb-3 text-4xl">
-              👥
-            </div>
-
-            <h3 className="font-bold text-slate-900">
-              Nenhum oficial escalado
-            </h3>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Este jogo ainda não possui oficiais vinculados.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-
-    {hasDrawDone && (
-      <div className="border border-green-200 rounded-3xl p-5 bg-green-50 md:col-span-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <div>
-            <p className="text-slate-500 text-sm">
-              Sorteio realizado
-            </p>
-
-            <strong className="text-lg text-green-800">
-              Atletas sorteados para exame
-            </strong>
-          </div>
-
-          <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
-            Salvo
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {(['HOME', 'AWAY'] as const).map((team) => {
-            const examPlayer = getSavedDrawPlayer(team, 'EXAME');
-            const reservePlayer = getSavedDrawPlayer(team, 'RESERVA');
-
-            return (
-              <div
-                key={team}
-                className="bg-white border border-green-100 rounded-2xl p-4"
-              >
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold mb-3">
-                  {getTeamName(team)}
-                </p>
-
-                {examPlayer && (
-                  <div className="mb-3">
-                    <p className="text-xs text-red-600 font-bold uppercase">
-                      Principal exame
-                    </p>
-
-                    <p className="font-black text-[var(--cdb-dark)]">
-                      Nº {examPlayer.number} - {examPlayer.name}
-                    </p>
-                  </div>
-                )}
-
-                {reservePlayer ? (
-                  <div>
-                    <p className="text-xs text-yellow-600 font-bold uppercase">
-                      Reserva
-                    </p>
-
-                    <p className="font-black text-[var(--cdb-dark)]">
-                      Nº {reservePlayer.number} - {reservePlayer.name}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-400">
-                    Reserva não informado.
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    )}
-  </div>
-              </div>
-            </details>
-            {isControlDone && (
-              <div className="bg-green-100 text-green-800 border border-green-200 rounded-3xl p-6">
-                <h2 className="font-bold text-xl mb-1">
-                  Controle realizado
-                </h2>
-
-                <p>
-                  As informações operacionais deste jogo estão bloqueadas para edição.
-                </p>
-              </div>
-            )}
-                        {canShowOperationalSections && (
-              <>
-            
-            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                <div>
-                  <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                    Substituições
-                  </h2>
-
-                  <p className="text-sm text-slate-500 mt-1">
-                    Informe até 5 substituições por equipe. Campos vazios serão ignorados.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-
-              <span className="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
-                {substitutions.length > 0 ? `${substitutions.length} registrada(s)` : 'Opcional'}
-              </span>
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                    ⌄
-                  </span>
-                </div>
-              </summary>
-
-              <div className="px-5 pb-5 lg:px-8 lg:pb-8">
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                {(['HOME', 'AWAY'] as const).map((team) => (
-                  <div
-                    key={team}
-                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5"
-                  >
-                    <div className="mb-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
-                        {team === 'HOME' ? 'Equipe Mandante' : 'Equipe Visitante'}
-                      </p>
-
-                      <h3 className="text-xl font-black text-[var(--cdb-dark)]">
-                        {getTeamName(team)}
-                      </h3>
-                    </div>
-
-                    <div className="space-y-3">
-                      {substitutionForm[team].map((row, index) => (
-                        <div
-                          key={`${team}-${index}`}
-                          className="bg-white border border-slate-200 rounded-2xl p-3"
-                        >
-                          <p className="text-xs font-bold text-slate-400 mb-2">
-                            Substituição {index + 1}
+                  {hasDrawDone && (
+                    <div className="mt-4 rounded-2xl border border-green-100 bg-white p-4">
+                      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                            Atletas sorteados
                           </p>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-500 mb-1">
-                                Nº saiu
-                              </label>
-
-                              <input
-                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-                                placeholder="Ex: 10"
-                                value={row.playerOutNumber}
-                                disabled={isControlDone}
-                                onChange={(e) =>
-                                  updateSubstitutionForm(
-                                    team,
-                                    index,
-                                    'playerOutNumber',
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-500 mb-1">
-                                Nº entrou
-                              </label>
-
-                              <input
-                                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-                                placeholder="Ex: 18"
-                                value={row.playerInNumber}
-                                disabled={isControlDone}
-                                onChange={(e) =>
-                                  updateSubstitutionForm(
-                                    team,
-                                    index,
-                                    'playerInNumber',
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
+                          <p className="mt-1 text-sm font-semibold text-green-800">
+                            Sorteio registrado para exame.
+                          </p>
                         </div>
-                      ))}
+
+                        <span className="w-fit rounded-full border border-green-200 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                          Salvo
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {(['HOME', 'AWAY'] as const).map((team) => {
+                          const examPlayer = getSavedDrawPlayer(team, 'EXAME');
+                          const reservePlayer = getSavedDrawPlayer(team, 'RESERVA');
+
+                          return (
+                            <div
+                              key={team}
+                              className="rounded-2xl border border-green-100 bg-green-50 p-4"
+                            >
+                              <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                                {getTeamName(team)}
+                              </p>
+
+                              {examPlayer && (
+                                <div className="mb-3">
+                                  <p className="text-xs font-bold uppercase text-red-600">
+                                    Principal exame
+                                  </p>
+
+                                  <p className="font-black text-[var(--cdb-dark)]">
+                                    Nº {examPlayer.number} - {examPlayer.name}
+                                  </p>
+                                </div>
+                              )}
+
+                              {reservePlayer ? (
+                                <div>
+                                  <p className="text-xs font-bold uppercase text-yellow-600">
+                                    Reserva
+                                  </p>
+
+                                  <p className="font-black text-[var(--cdb-dark)]">
+                                    Nº {reservePlayer.number} - {reservePlayer.name}
+                                  </p>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-400">
+                                  Reserva não informado.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )}
 
-              <div className="flex flex-col sm:flex-row gap-3 mt-5">
-                <button
-                  disabled={isControlDone}
-                  onClick={saveSubstitutions}
-                  className="bg-[var(--cdb-blue)] disabled:bg-slate-300 text-white hover:brightness-95 px-5 py-3 rounded-2xl font-semibold"
-                >
-                  Salvar substituições
-                </button>
-
-                {isControlDone && (
-                  <p className="text-sm text-slate-500 flex items-center">
-                    Controle realizado. As substituições estão bloqueadas.
-                  </p>
-                )}
-              </div>
-              </div>
-            </details>
-            {!hasDrawDone && (
-            <details className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50 lg:px-8 lg:py-6 [&::-webkit-details-marker]:hidden">
-                  <div>
-                    <h2 className="text-xl font-black text-[var(--cdb-dark)] lg:text-2xl">
-                      Registro dos atletas sorteados
-                    </h2>
-  
-                    <p className="text-sm text-slate-500 mt-1">
-                      Preencha os atletas principais de cada time. O reserva é opcional.
-                    </p>
-                  </div>
-  
-                  <div className="flex items-center gap-3">
-  
-                <span className="bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-bold w-fit">
-                  Sorteio pendente
-                </span>
-                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-600 transition group-open:rotate-180">
-                      ⌄
-                    </span>
-                  </div>
-                </summary>
-  
-                <div className="px-5 pb-5 lg:px-8 lg:pb-8">
+                  {!hasDrawDone && isMatchInProgress && !isControlDone && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5">
                       <div className="mb-4">
@@ -2586,57 +2656,7 @@ function formatTimeOnly(date: string) {
                     </div>
                   </div>
   
-                  <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                          Relação de atletas
-                        </p>
 
-                        <h3 className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
-                          Documento do sorteio
-                        </h3>
-
-                        <p className="mt-1 text-sm text-slate-500">
-                          Envie uma foto ou PDF da relação de atletas para guardar junto ao jogo.
-                        </p>
-                      </div>
-
-                      {match.athleteListFileName && match.athleteListFileData && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            downloadDataUrl(
-                              match.athleteListFileData!,
-                              match.athleteListFileName || 'relacao-de-atletas',
-                            )
-                          }
-                          className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
-                        >
-                          Baixar relação
-                        </button>
-                      )}
-                    </div>
-
-                    {canUploadAthleteListFile ? (
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        disabled={savingAthleteListFile}
-                        onChange={(event) => {
-                          handleUploadMatchDocument('athleteList', event.currentTarget.files);
-                          event.currentTarget.value = '';
-                        }}
-                        className="mt-4 block w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      />
-                    ) : (
-                      <p className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-500">
-                        {match.athleteListFileName
-                          ? 'Arquivo disponível para download.'
-                          : 'Upload disponível somente para ADMIN.'}
-                      </p>
-                    )}
-                  </div>
 
                   <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <p className="text-sm text-slate-500">
@@ -2644,18 +2664,313 @@ function formatTimeOnly(date: string) {
                     </p>
   
                     <button
-                      disabled={isControlDone}
-                      onClick={saveDraw}
-                      className="rounded-2xl bg-green-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-green-700 disabled:bg-slate-300"
+                      type="button"
+                      disabled={isControlDone || isAnyActionLoading}
+                      onClick={() => runExclusiveAction('save-draw', saveDraw)}
+                      className="rounded-2xl bg-green-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
-                      Salvar sorteio
+                      {actionLoading === 'save-draw'
+                        ? 'Salvando sorteio...'
+                        : 'Salvar sorteio'}
                     </button>
                   </div>
+                    </div>
+                  )}
+
+                  {!hasDrawDone && isMatchInProgress && !isControlDone && (
+                    <p className="mt-4 text-xs text-purple-700">
+                      Após salvar os atletas sorteados, esta etapa ficará como sorteio realizado.
+                    </p>
+                  )}
+
+                  {!isMatchInProgress && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando o jogo ser marcado como em andamento.
+                    </p>
+                  )}
                 </div>
-              </details>
-            )}
-              </>
-            )}
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    hasMatchKits
+                      ? 'bg-green-50 border-green-200'
+                      : canManageMatchKits
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        7. Kits utilizados no controle
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Registre os kits utilizados nesta partida. Ao salvar, eles sairão automaticamente da responsabilidade do DCO e ficarão marcados como utilizados.
+                      </p>
+                    </div>
+
+                    {hasMatchKits ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        {matchKits.length} utilizado(s)
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {matchKits.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {matchKits.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div>
+                            <p className="text-sm font-black text-slate-900">
+                              Kit {item.kit.number}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {item.official?.user?.name
+                                ? `Registrado por ${item.official.user.name}`
+                                : 'Kit utilizado nesta partida'}
+                            </p>
+                          </div>
+
+                          {!isControlDone && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMatchKit(item.kitId)}
+                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
+                            >
+                              Remover
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {canManageMatchKits && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                        Meus kits disponíveis
+                      </p>
+
+                      {availableKitsForMatch.length === 0 ? (
+                        <p className="mt-3 text-sm text-slate-500">
+                          Nenhum kit disponível para o seu usuário. Solicite o repasse ao administrador.
+                        </p>
+                      ) : (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {availableKitsForMatch.map((kit) => {
+                            const checked = selectedKitIds.includes(kit.id);
+
+                            return (
+                              <label
+                                key={kit.id}
+                                className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition ${
+                                  checked
+                                    ? 'border-[var(--cdb-blue)] bg-blue-50 text-[var(--cdb-blue)]'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleKitSelection(kit.id)}
+                                  className="h-4 w-4 accent-[var(--cdb-blue)]"
+                                />
+                                Kit {kit.number}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runExclusiveAction('match-kits', handleSaveMatchKits)
+                        }
+                        disabled={
+                          savingKits ||
+                          selectedKitIds.length === 0 ||
+                          isAnyActionLoading
+                        }
+                        className="mt-4 w-full rounded-2xl bg-[var(--cdb-blue)] py-3 font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {actionLoading === 'match-kits' || savingKits
+                          ? 'Salvando kits...'
+                          : 'Registrar kits utilizados'}
+                      </button>
+                    </div>
+                  )}
+
+                  {!canManageMatchKits && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando jogo em andamento e sorteio realizado para liberar o registro de kits utilizados.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    isControlDone
+                      ? 'bg-green-50 border-green-200'
+                      : canFinishControl
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        8. Controle realizado
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Finaliza a operação e bloqueia alterações.
+                      </p>
+                    </div>
+
+                    {isControlDone && (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Finalizado
+                      </span>
+                    )}
+                  </div>
+
+                  {renderOperationalLog('CONTROL_DONE')}
+
+                  {canFinishControl && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        runExclusiveAction('finish-control', () =>
+                          updateMatchStatus('CONTROL_DONE'),
+                        )
+                      }
+                      disabled={isAnyActionLoading}
+                      className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {actionLoading === 'finish-control'
+                        ? 'Finalizando controle...'
+                        : 'Marcar controle realizado'}
+                    </button>
+                  )}
+
+                  {!canFinishControl && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando jogo em andamento, sorteio realizado e kits utilizados registrados.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    match.finalDocumentFileName
+                      ? 'bg-green-50 border-green-200'
+                      : isControlDone
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        9. Documentos do jogo
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Após finalizar o controle, o ADMIN deverá enviar o documento final do jogo para consulta posterior.
+                      </p>
+                    </div>
+
+                    {match.finalDocumentFileName ? (
+                      <span className="shrink-0 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                        Enviado
+                      </span>
+                    ) : (
+                      <span className="shrink-0 bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+
+                  {match.finalDocumentFileName && match.finalDocumentFileData && (
+                    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-green-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                          Documento enviado
+                        </p>
+
+                        <p className="mt-1 text-sm font-black text-slate-900">
+                          {match.finalDocumentFileName}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadDataUrl(
+                            match.finalDocumentFileData!,
+                            match.finalDocumentFileName || 'documento-final-jogo',
+                          )
+                        }
+                        className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+                      >
+                        Baixar documento
+                      </button>
+                    </div>
+                  )}
+
+                  {canUploadFinalDocumentFile && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Documento final do jogo
+                      </label>
+
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        disabled={savingFinalDocumentFile || isAnyActionLoading}
+                        onChange={(event) => {
+                          const files = event.currentTarget.files;
+                          runExclusiveAction('final-document-upload', () =>
+                            handleUploadMatchDocument('finalDocument', files),
+                          );
+                          event.currentTarget.value = '';
+                        }}
+                        className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        Formatos aceitos: PDF, JPG ou PNG. Tamanho máximo: 10 MB.
+                      </p>
+                    </div>
+                  )}
+
+                  {!isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      O upload dos documentos finais será liberado para o ADMIN após o controle realizado.
+                    </p>
+                  )}
+                </div>
+
+                {isControlDone && (
+                  <div className="bg-green-50 border border-green-200 text-green-700 rounded-2xl p-4 text-sm">
+                    Controle já realizado. Informações operacionais bloqueadas.
+                  </div>
+                )}
+              </div>
+              </div>
+            </details>
+
+          <div className="xl:col-span-3 space-y-4 lg:space-y-6">
+                                    
           </div>
 
                   </section>

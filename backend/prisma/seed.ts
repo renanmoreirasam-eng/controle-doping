@@ -51,7 +51,6 @@ async function main() {
       where: { email: item.email },
       update: {
         name: item.name,
-        role: item.role,
       },
       create: {
         name: item.name,

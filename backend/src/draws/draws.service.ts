@@ -40,4 +40,77 @@ export class DrawsService {
       },
     });
   }
+
+  async findSelectedAthletesByTeam(teamName: string) {
+    const normalizedTeamName = teamName.trim();
+
+    const draws = await this.prisma.draw.findMany({
+      where: {
+        match: {
+          OR: [
+            {
+              homeTeam: normalizedTeamName,
+            },
+            {
+              awayTeam: normalizedTeamName,
+            },
+          ],
+        },
+      },
+      include: {
+        players: {
+          where: {
+            type: 'EXAME',
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+        match: {
+          include: {
+            championship: true,
+            stadium: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return draws.flatMap((draw) => {
+      const match = draw.match;
+      const selectedSide =
+        match.homeTeam === normalizedTeamName
+          ? 'HOME'
+          : match.awayTeam === normalizedTeamName
+            ? 'AWAY'
+            : null;
+
+      if (!selectedSide) {
+        return [];
+      }
+
+      return draw.players
+        .filter((player) => player.team === selectedSide)
+        .map((player) => ({
+          id: player.id,
+          drawId: draw.id,
+          matchId: match.id,
+          teamName: normalizedTeamName,
+          teamSide: selectedSide,
+          number: player.number,
+          name: player.name,
+          nickname: player.nickname,
+          type: player.type,
+          matchDate: match.matchDate,
+          matchLabel: `${match.homeTeam} x ${match.awayTeam}`,
+          homeTeam: match.homeTeam,
+          awayTeam: match.awayTeam,
+          championshipName: match.championship?.name || null,
+          stadiumName: match.stadium?.name || null,
+          createdAt: draw.createdAt,
+        }));
+    });
+  }
 }

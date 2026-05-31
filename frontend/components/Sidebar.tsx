@@ -13,16 +13,18 @@ const allMenus = [
     icon: '📊',
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
-  {
-    name: 'Jogos',
-    href: '/dashboard/matches',
-    icon: '🏟️',
-    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
-  },
+  
+  
   {
     name: 'Escalas',
     href: '/dashboard/scales',
     icon: '📋',
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
+  },
+  {
+    name: 'Jogos',
+    href: '/dashboard/matches',
+    icon: '🏟️',
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
    {
@@ -30,6 +32,18 @@ const allMenus = [
     href: '/dashboard/inventory',
     icon: '📦',
     roles: ['ADMIN', 'COORDINATOR'],
+  },
+  {
+    name: 'Inspeções de Sala',
+    href: '/dashboard/room-inspections',
+    icon: '🔎',
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
+  },
+  {
+    name: 'Atletas Sorteados',
+    href: '/dashboard/drawn-athletes',
+    icon: '🎲',
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
     name: 'Oficiais',

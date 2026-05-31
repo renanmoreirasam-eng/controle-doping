@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { DrawsService } from './draws.service';
 
 @Controller('draws')
@@ -20,6 +20,15 @@ export class DrawsController {
     },
   ) {
     return this.drawsService.create(body);
+  }
+
+  @Get('selected-athletes')
+  async findSelectedAthletesByTeam(@Query('teamName') teamName?: string) {
+    if (!teamName?.trim()) {
+      return [];
+    }
+
+    return this.drawsService.findSelectedAthletesByTeam(teamName);
   }
 
   @Get()

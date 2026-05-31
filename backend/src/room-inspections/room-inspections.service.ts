@@ -5,6 +5,17 @@ import { PrismaService } from '../prisma/prisma.service';
 export class RoomInspectionsService {
   constructor(private prisma: PrismaService) {}
 
+  private includeRelations = {
+    items: true,
+    photos: true,
+    match: {
+      include: {
+        championship: true,
+        stadium: true,
+      },
+    },
+  };
+
   async create(data: {
     matchId: string;
     status: string;
@@ -31,21 +42,13 @@ export class RoomInspectionsService {
           create: data.photos || [],
         },
       },
-      include: {
-        items: true,
-        photos: true,
-        match: true,
-      },
+      include: this.includeRelations,
     });
   }
 
   async findAll() {
     return this.prisma.roomInspection.findMany({
-      include: {
-        items: true,
-        photos: true,
-        match: true,
-      },
+      include: this.includeRelations,
       orderBy: {
         createdAt: 'desc',
       },
@@ -57,11 +60,21 @@ export class RoomInspectionsService {
       where: {
         matchId,
       },
-      include: {
-        items: true,
-        photos: true,
-        match: true,
+      include: this.includeRelations,
+      orderBy: {
+        createdAt: 'desc',
       },
+    });
+  }
+
+  async findByStadium(stadiumId: string) {
+    return this.prisma.roomInspection.findMany({
+      where: {
+        match: {
+          stadiumId,
+        },
+      },
+      include: this.includeRelations,
       orderBy: {
         createdAt: 'desc',
       },
