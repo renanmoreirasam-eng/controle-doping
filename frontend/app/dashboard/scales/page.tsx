@@ -108,6 +108,8 @@ function ScalesPageContent() {
   const [dcoOfficialId, setDcoOfficialId] = useState("");
   const [assistantOfficialId, setAssistantOfficialId] = useState("");
   const [modal, setModal] = useState<ModalState>(initialModalState);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadingError, setLoadingError] = useState("");
 
   const user = getUser();
 
@@ -189,10 +191,37 @@ function ScalesPageContent() {
     setOfficials(response.data.filter((item: Official) => item.active));
   }
 
+  async function loadInitialData() {
+    try {
+      setInitialLoading(true);
+      setLoadingError("");
+
+      const [scalesResponse, matchesResponse, officialsResponse] =
+        await Promise.all([
+          api.get("/match-officials"),
+          api.get("/matches"),
+          api.get("/officials"),
+        ]);
+
+      setScales(scalesResponse.data);
+      setMatches(matchesResponse.data);
+      setOfficials(
+        officialsResponse.data.filter((item: Official) => item.active),
+      );
+    } catch (error: any) {
+      setLoadingError(
+        getErrorMessage(
+          error,
+          "Não foi possível carregar as escalas. Tente atualizar a página.",
+        ),
+      );
+    } finally {
+      setInitialLoading(false);
+    }
+  }
+
   useEffect(() => {
-    loadScales();
-    loadMatches();
-    loadOfficials();
+    loadInitialData();
   }, []);
 
   useEffect(() => {
@@ -677,6 +706,62 @@ function ScalesPageContent() {
         }
       },
     });
+  }
+
+  if (initialLoading) {
+    return (
+      <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
+        <Sidebar />
+
+        <div className="flex min-w-0 flex-1 items-center justify-center p-4 lg:p-8">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm lg:p-8">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[var(--cdb-blue-soft)]">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-100 border-t-[var(--cdb-blue)]" />
+            </div>
+
+            <h1 className="mt-5 text-2xl font-black text-[var(--cdb-dark)]">
+              Carregando escalas
+            </h1>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Aguarde enquanto buscamos jogos, oficiais e confirmações de escala.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (loadingError) {
+    return (
+      <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
+        <Sidebar />
+
+        <div className="flex min-w-0 flex-1 items-center justify-center p-4 lg:p-8">
+          <div className="w-full max-w-lg rounded-3xl border border-red-100 bg-white p-6 text-center shadow-sm lg:p-8">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50 text-3xl">
+              ⚠️
+            </div>
+
+            <h1 className="mt-5 text-2xl font-black text-[var(--cdb-dark)]">
+              Não foi possível carregar
+            </h1>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {loadingError}
+            </p>
+
+            <button
+              type="button"
+              onClick={loadInitialData}
+              className="mt-5 rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-black text-white transition hover:brightness-95"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
