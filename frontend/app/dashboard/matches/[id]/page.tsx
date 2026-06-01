@@ -531,10 +531,26 @@ export default function MatchDetailsPage() {
   const checkInLog = getOperationalLog('CHECKIN_STADIUM');
   const isCheckedIn = Boolean(checkInLog) || isControlDone;
 
+  const hasDcoConfirmed = scales.some(
+    (scale) => scale.role === 'DCO' && scale.confirmed === true,
+  );
+
+  const hasAssistant = scales.some(
+    (scale) => scale.role === 'ASSISTANT',
+  );
+
+  const hasAssistantConfirmed = scales.some(
+    (scale) => scale.role === 'ASSISTANT' && scale.confirmed === true,
+  );
+
+  const isScaleAcceptedByScales =
+    hasDcoConfirmed && (!hasAssistant || hasAssistantConfirmed);
+
   const isScaleAccepted =
     match?.status === 'SCALE_ACCEPTED' ||
     match?.status === 'IN_PROGRESS' ||
-    match?.status === 'CONTROL_DONE';
+    match?.status === 'CONTROL_DONE' ||
+    isScaleAcceptedByScales;
 
   const isMatchInProgress =
     match?.status === 'IN_PROGRESS' ||

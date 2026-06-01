@@ -47,22 +47,31 @@ export class MatchOfficialsService {
         official.confirmed === true,
     );
 
+    const hasAssistant = officials.some(
+      (official) => official.role === 'ASSISTANT',
+    );
+
     const hasAssistantConfirmed = officials.some(
       (official) =>
         official.role === 'ASSISTANT' &&
         official.confirmed === true,
     );
 
-    if (hasDcoConfirmed && hasAssistantConfirmed) {
-      await this.prisma.match.update({
-        where: {
-          id: matchId,
-        },
-        data: {
-          status: 'SCALE_ACCEPTED',
-        },
-      });
+    const canAcceptScale =
+      hasDcoConfirmed && (!hasAssistant || hasAssistantConfirmed);
+
+    if (!canAcceptScale) {
+      return;
     }
+
+    await this.prisma.match.update({
+      where: {
+        id: matchId,
+      },
+      data: {
+        status: 'SCALE_ACCEPTED',
+      },
+    });
   }
 
   async create(data: {
