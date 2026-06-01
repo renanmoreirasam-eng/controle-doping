@@ -23,6 +23,7 @@ type Match = {
 type Official = {
   id: string;
   active: boolean;
+  operationalRole?: string | null;
   user: {
     id?: string;
     name: string;
@@ -71,6 +72,24 @@ function getErrorMessage(error: any, fallback: string) {
   return Array.isArray(message) ? message.join(" ") : String(message);
 }
 
+function normalizeText(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+}
+
+function isDcoOfficial(official: Official) {
+  return normalizeText(official.operationalRole).includes('DCO');
+}
+
+function sortOfficialsByName(a: Official, b: Official) {
+  return a.user.name.localeCompare(b.user.name, 'pt-BR', {
+    sensitivity: 'base',
+  });
+}
+
 function ScalesPageContent() {
   const searchParams = useSearchParams();
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +101,7 @@ function ScalesPageContent() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [scaleStatusFilter, setScaleStatusFilter] = useState("");
+  const [scaleTab, setScaleTab] = useState<"ACTIVE" | "DONE">("ACTIVE");
 
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [matchId, setMatchId] = useState("");
@@ -98,6 +118,21 @@ function ScalesPageContent() {
   const loggedUserEmail = user?.email || user?.user?.email;
 
   const isAdmin = userRole === "ADMIN";
+
+  const dcoOfficials = useMemo(
+    () => officials.filter(isDcoOfficial).sort(sortOfficialsByName),
+    [officials],
+  );
+
+  const assistantOfficialOptions = useMemo(() => {
+    const assistantOfficials = officials
+      .filter((official) => !isDcoOfficial(official))
+      .sort(sortOfficialsByName);
+
+    const dcoOptions = officials.filter(isDcoOfficial).sort(sortOfficialsByName);
+
+    return [...assistantOfficials, ...dcoOptions];
+  }, [officials]);
 
   function closeModal() {
     setModal(initialModalState);
@@ -278,10 +313,27 @@ function ScalesPageContent() {
         return true;
       });
 
+    const matchesScaleTab =
+      scaleTab === "DONE"
+        ? group.match.status === "CONTROL_DONE"
+        : group.match.status !== "CONTROL_DONE";
+
     return (
-      matchesSearch && matchesStartDate && matchesEndDate && matchesScaleStatus
+      matchesSearch &&
+      matchesStartDate &&
+      matchesEndDate &&
+      matchesScaleStatus &&
+      matchesScaleTab
     );
   });
+
+  const activeScaleGroups = groupedScales.filter(
+    (group) => group.match.status !== "CONTROL_DONE",
+  ).length;
+
+  const doneScaleGroups = groupedScales.filter(
+    (group) => group.match.status === "CONTROL_DONE",
+  ).length;
 
   const availableMatches = useMemo(() => {
     return matches
@@ -903,12 +955,16 @@ function ScalesPageContent() {
                   >
                     <option value="">DCO opcional</option>
 
-                    {officials.map((official) => (
+                    {dcoOfficials.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user.name}
                       </option>
                     ))}
                   </select>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Lista somente oficiais com perfil operacional DCO, em ordem alfabética.
+                  </p>
                 </div>
 
                 <div>
@@ -923,12 +979,17 @@ function ScalesPageContent() {
                   >
                     <option value="">Assistente opcional</option>
 
-                    {officials.map((official) => (
+                    {assistantOfficialOptions.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user.name}
+                        {isDcoOfficial(official) ? ' — DCO' : ''}
                       </option>
                     ))}
                   </select>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Lista assistentes primeiro e depois DCOs, ambos em ordem alfabética.
+                  </p>
                 </div>
               </div>
 
@@ -964,6 +1025,32 @@ function ScalesPageContent() {
                 <p className="mt-1 text-sm text-slate-500">
                   Visualização operacional por jogo.
                 </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setScaleTab("ACTIVE")}
+                  className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
+                    scaleTab === "ACTIVE"
+                      ? "bg-[var(--cdb-blue)] text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-[var(--cdb-blue)] hover:bg-[var(--cdb-blue-soft)]"
+                  }`}
+                >
+                  Escalas de jogos ativos ({activeScaleGroups})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScaleTab("DONE")}
+                  className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
+                    scaleTab === "DONE"
+                      ? "bg-[var(--cdb-green)] text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-[var(--cdb-blue)] hover:bg-[var(--cdb-blue-soft)]"
+                  }`}
+                >
+                  Escalas de jogos concluídos ({doneScaleGroups})
+                </button>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -1196,7 +1283,7 @@ function ScalesPageContent() {
                     </div>
                   )}
 
-                  {isAdmin && (
+                  {isAdmin && group.match.status !== "CONTROL_DONE" && (
                     <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
                       <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-[var(--cdb-blue)]">
                         Administração
@@ -1384,7 +1471,7 @@ function ScalesPageContent() {
                             </div>
                           )}
 
-                          {isAdmin && (
+                          {isAdmin && group.match.status !== "CONTROL_DONE" && (
                             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3">
                               <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--cdb-blue)]">
                                 Administração

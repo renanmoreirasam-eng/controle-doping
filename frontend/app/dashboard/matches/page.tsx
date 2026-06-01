@@ -1088,36 +1088,6 @@ export default function MatchesPage() {
 
             <button
               type="button"
-              onClick={() => applyCardFilter('COMPLETED', 'DONE')}
-              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
-                cardFilter === 'COMPLETED'
-                  ? 'bg-[var(--cdb-green-soft)] border-emerald-200'
-                  : 'bg-white border-slate-200'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm font-semibold">
-                    Jogos concluídos
-                  </p>
-
-                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
-                    {completedMatches}
-                  </h2>
-
-                  <p className="text-xs text-slate-500 mt-2">
-                    {isAdmin ? 'Todos os controles realizados' : 'Meus controles realizados'}
-                  </p>
-                </div>
-
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
-                  ✅
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
               onClick={() => applyCardFilter('MISSION_ORDER', 'ACTIVE')}
               className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
                 pendingMissionOrder > 0
@@ -1163,7 +1133,36 @@ export default function MatchesPage() {
                 </div>
               </div>
             </button>
-          </div>
+
+            <button
+              type="button"
+              onClick={() => applyCardFilter('COMPLETED', 'DONE')}
+              className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
+                cardFilter === 'COMPLETED'
+                  ? 'bg-[var(--cdb-green-soft)] border-emerald-200'
+                  : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-slate-500 text-sm font-semibold">
+                    Jogos concluídos
+                  </p>
+
+                  <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
+                    {completedMatches}
+                  </h2>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    {isAdmin ? 'Todos os controles realizados' : 'Meus controles realizados'}
+                  </p>
+                </div>
+
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] flex items-center justify-center text-3xl">
+                  ✅
+                </div>
+              </div>
+            </button>          </div>
 
           {isAdmin && (
             <div ref={formRef} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 lg:p-6 mb-6 lg:mb-8 scroll-mt-6">
@@ -1648,7 +1647,7 @@ export default function MatchesPage() {
                           </button>
                         )}
 
-                        {isAdmin && (
+                        {isAdmin && match.status !== 'CONTROL_DONE' && (
                           <>
                             <button
                               type="button"
@@ -1847,7 +1846,7 @@ export default function MatchesPage() {
                                 </button>
                               )}
 
-                              {isAdmin && (
+                              {isAdmin && match.status !== 'CONTROL_DONE' && (
                                 <>
                                   <button
                                     type="button"
