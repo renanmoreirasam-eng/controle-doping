@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 
 type MatchStatus =
   | 'SCHEDULED'
@@ -16,7 +17,10 @@ type OperationalStep =
 
 @Injectable()
 export class MatchesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pushService: PushService,
+  ) {}
 
   private includeRelations = {
     championship: true,
@@ -53,6 +57,63 @@ export class MatchesService {
     }
 
     return null;
+  }
+
+  private async notifyFinalDocumentsAvailable(match: {
+    id: string;
+    homeTeam: string;
+    awayTeam: string;
+  }) {
+    const matchOfficials = await this.prisma.matchOfficial.findMany({
+      where: {
+        matchId: match.id,
+        confirmed: true,
+      },
+      include: {
+        official: {
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const userIds = Array.from(
+      new Set(
+        matchOfficials
+          .map((matchOfficial) => matchOfficial.official?.user?.id)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    if (userIds.length === 0) {
+      return;
+    }
+
+    const body = `A documentação de ${match.homeTeam} x ${match.awayTeam} já está disponível no sistema.`;
+
+    const results = await Promise.allSettled(
+      userIds.map((userId) =>
+        this.pushService.sendToUser(userId, {
+          title: 'Documentação do jogo disponível',
+          body,
+          url: `/dashboard/matches/${match.id}`,
+        }),
+      ),
+    );
+
+    const failed = results.filter((result) => result.status === 'rejected');
+
+    if (failed.length > 0) {
+      console.error(
+        'Erro ao enviar algumas notificações de documentação do jogo:',
+        failed,
+      );
+    }
   }
 
   async create(data: {
@@ -186,7 +247,11 @@ export class MatchesService {
       finalDocumentFileData?: string | null;
     },
   ) {
-    return this.prisma.match.update({
+    const shouldNotifyFinalDocument =
+      Boolean(data.finalDocumentFileName) ||
+      Boolean(data.finalDocumentFileData);
+
+    const updated = await this.prisma.match.update({
       where: { id },
       data: {
         athleteListFileName: data.athleteListFileName,
@@ -198,6 +263,17 @@ export class MatchesService {
       },
       include: this.includeRelations,
     });
+
+    if (shouldNotifyFinalDocument) {
+      await this.notifyFinalDocumentsAvailable(updated).catch((error) => {
+        console.error(
+          'Erro ao enviar notificação de documentação do jogo:',
+          error,
+        );
+      });
+    }
+
+    return updated;
   }
 
   async updateStatus(
