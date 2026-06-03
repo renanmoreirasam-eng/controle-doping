@@ -374,6 +374,8 @@ export default function MatchDetailsPage() {
   const [modal, setModal] = useState<ModalState>(initialModalState);
   const [actionLoading, setActionLoading] = useState<ActionKey | null>(null);
   const actionLockRef = useRef<ActionKey | null>(null);
+  const lastOperationalSnapshotRef = useRef('');
+  const hasShownExternalUpdateRef = useRef(false);
 
   const isAnyActionLoading = Boolean(actionLoading);
 
@@ -387,7 +389,20 @@ export default function MatchDetailsPage() {
     setActionLoading(actionKey);
 
     try {
+      await refreshOperationData({ silent: true });
       await callback();
+      hasShownExternalUpdateRef.current = false;
+    } catch (error: any) {
+      await refreshOperationData({ silent: true });
+
+      showMessage(
+        'Operação atualizada',
+        getErrorMessage(
+          error,
+          'A operação foi atualizada por outro usuário. Revise as informações mais recentes e tente novamente.',
+        ),
+        'warning',
+      );
     } finally {
       actionLockRef.current = null;
       setActionLoading(null);
@@ -465,7 +480,21 @@ export default function MatchDetailsPage() {
       loadOperationalLogs();
       loadMyKits();
       loadMatchKits();
+
+      window.setTimeout(() => {
+        refreshOperationData({ silent: true });
+      }, 800);
     }
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!matchId) return;
+
+    const interval = window.setInterval(() => {
+      refreshOperationData();
+    }, 15000);
+
+    return () => window.clearInterval(interval);
   }, [matchId]);
 
   useEffect(() => {
@@ -614,6 +643,98 @@ export default function MatchDetailsPage() {
 
   const canShowOperationalSections =
     isMatchInProgress || hasDrawDone || isControlDone;
+
+  function getOperationalSnapshot(params: {
+    matchStatus?: string;
+    logs?: OperationalLog[];
+    drawCount?: number;
+    kitCount?: number;
+    substitutionCount?: number;
+    roomInspectionCount?: number;
+  }) {
+    const orderedSteps = [...(params.logs || [])]
+      .map((log) => `${log.step}:${log.createdAt}`)
+      .sort()
+      .join('|');
+
+    return [
+      params.matchStatus || '',
+      orderedSteps,
+      params.drawCount || 0,
+      params.kitCount || 0,
+      params.substitutionCount || 0,
+      params.roomInspectionCount || 0,
+    ].join('::');
+  }
+
+  async function refreshOperationData(options?: { silent?: boolean }) {
+    if (!matchId || actionLockRef.current) return;
+
+    try {
+      const [
+        matchResponse,
+        drawsResponse,
+        substitutionsResponse,
+        roomInspectionsResponse,
+        logsResponse,
+        matchKitsResponse,
+      ] = await Promise.all([
+        api.get(`/matches/${matchId}`),
+        api.get('/draws'),
+        api.get(`/substitutions?matchId=${matchId}`),
+        api.get(`/room-inspections?matchId=${matchId}`),
+        api.get(`/matches/${matchId}/operational-logs`),
+        api.get(`/inventory/matches/${matchId}/kits`),
+      ]);
+
+      const nextMatch = matchResponse.data;
+      const nextDraws = drawsResponse.data.filter(
+        (draw: Draw) => draw.matchId === matchId,
+      );
+      const nextSubstitutions = substitutionsResponse.data;
+      const nextRoomInspections = roomInspectionsResponse.data;
+      const nextOperationalLogs = logsResponse.data;
+      const nextMatchKits = matchKitsResponse.data || [];
+
+      const nextSnapshot = getOperationalSnapshot({
+        matchStatus: nextMatch?.status,
+        logs: nextOperationalLogs,
+        drawCount: nextDraws.length,
+        kitCount: nextMatchKits.length,
+        substitutionCount: nextSubstitutions.length,
+        roomInspectionCount: nextRoomInspections.length,
+      });
+
+      const previousSnapshot = lastOperationalSnapshotRef.current;
+
+      setMatch(nextMatch);
+      setDraws(nextDraws);
+      setSubstitutions(nextSubstitutions);
+      setRoomInspections(nextRoomInspections);
+      setOperationalLogs(nextOperationalLogs);
+      setMatchKits(nextMatchKits);
+      setSelectedKitIds([]);
+
+      lastOperationalSnapshotRef.current = nextSnapshot;
+
+      if (
+        !options?.silent &&
+        previousSnapshot &&
+        previousSnapshot !== nextSnapshot &&
+        !hasShownExternalUpdateRef.current
+      ) {
+        hasShownExternalUpdateRef.current = true;
+
+        showMessage(
+          'Operação atualizada',
+          'Alguma etapa foi registrada por outro usuário. A tela foi atualizada com as informações mais recentes.',
+          'warning',
+        );
+      }
+    } catch (error) {
+      console.warn('Não foi possível atualizar automaticamente a operação.', error);
+    }
+  }
 
   function formatTime() {
     const hrs = String(Math.floor(seconds / 3600)).padStart(2, '0');

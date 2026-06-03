@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 
@@ -286,6 +286,45 @@ export class MatchesService {
       comment?: string;
     },
   ) {
+
+    const currentMatch = await this.prisma.match.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+
+    if (!currentMatch) {
+      throw new BadRequestException('Jogo não encontrado.');
+    }
+
+    if (currentMatch.status === 'CONTROL_DONE' && status !== 'CONTROL_DONE') {
+      throw new BadRequestException(
+        'Controle já realizado. Não é possível alterar esta operação.',
+      );
+    }
+
+    const stepByStatus: Partial<Record<MatchStatus, OperationalStep>> = {
+      SCALE_ACCEPTED: 'CHECKIN_STADIUM',
+      IN_PROGRESS: 'MATCH_IN_PROGRESS',
+      CONTROL_DONE: 'CONTROL_DONE',
+    };
+
+    const nextStep = stepByStatus[status];
+
+    if (nextStep) {
+      const existingStepLog = await this.prisma.matchOperationalLog.findFirst({
+        where: {
+          matchId: id,
+          step: nextStep,
+        },
+      });
+
+      if (existingStepLog) {
+        throw new BadRequestException(
+          'Esta etapa já foi registrada por outro usuário. Atualize a página para visualizar as informações mais recentes.',
+        );
+      }
+    }
+
     const match = await this.prisma.match.update({
       where: { id },
       data: { status },
@@ -329,16 +368,9 @@ export class MatchesService {
     });
 
     if (existingLog) {
-      if (comment) {
-        return this.prisma.matchOperationalLog.update({
-          where: { id: existingLog.id },
-          data: {
-            comment,
-          },
-        });
-      }
-
-      return existingLog;
+      throw new BadRequestException(
+        'Esta etapa já foi registrada por outro usuário. Atualize a página para visualizar as informações mais recentes.',
+      );
     }
 
     return this.prisma.matchOperationalLog.create({
