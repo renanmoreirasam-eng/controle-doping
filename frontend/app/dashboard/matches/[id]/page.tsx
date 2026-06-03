@@ -126,6 +126,7 @@ type OperationalLog = {
   userEmail?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  comment?: string | null;
   createdAt: string;
 };
 
@@ -321,6 +322,7 @@ export default function MatchDetailsPage() {
   );
   const [selectedKitIds, setSelectedKitIds] = useState<string[]>([]);
   const [savingKits, setSavingKits] = useState(false);
+  const [controlComment, setControlComment] = useState('');
 
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
@@ -1052,12 +1054,20 @@ export default function MatchDetailsPage() {
         status,
         latitude: location?.latitude,
         longitude: location?.longitude,
+        comment:
+          status === 'CONTROL_DONE'
+            ? controlComment.trim() || null
+            : undefined,
       });
 
       await loadMatch();
       await loadOperationalLogs();
       await loadMyKits();
       await loadMatchKits();
+
+      if (status === 'CONTROL_DONE') {
+        setControlComment('');
+      }
 
       showMessage('Status atualizado', 'Status do jogo atualizado com sucesso!', 'success');
     } catch (error: any) {
@@ -1103,6 +1113,18 @@ export default function MatchDetailsPage() {
           <strong>Usuário:</strong>{' '}
           {log.userName || log.userEmail || 'Não identificado'}
         </p>
+
+        {log.comment && (
+          <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-slate-700">
+            <p className="font-black text-[var(--cdb-blue)]">
+              Comentário do controle
+            </p>
+
+            <p className="mt-1 whitespace-pre-line leading-relaxed">
+              {log.comment}
+            </p>
+          </div>
+        )}
 
         {step === 'CHECKIN_STADIUM' &&
           log.latitude !== null &&
@@ -2862,20 +2884,40 @@ function formatTimeOnly(date: string) {
                   {renderOperationalLog('CONTROL_DONE')}
 
                   {canFinishControl && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        runExclusiveAction('finish-control', () =>
-                          updateMatchStatus('CONTROL_DONE'),
-                        )
-                      }
-                      disabled={isAnyActionLoading}
-                      className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {actionLoading === 'finish-control'
-                        ? 'Finalizando controle...'
-                        : 'Marcar controle realizado'}
-                    </button>
+                    <div className="mt-4 rounded-2xl border border-emerald-100 bg-white p-4">
+                      <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Comentário do controle
+                      </label>
+
+                      <textarea
+                        value={controlComment}
+                        onChange={(event) => setControlComment(event.target.value)}
+                        placeholder="Descreva aqui informações relevantes que aconteceram no controle de doping. Campo opcional."
+                        rows={4}
+                        maxLength={2000}
+                        disabled={isAnyActionLoading}
+                        className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                      />
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        Campo opcional. Use para registrar observações relevantes do controle.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runExclusiveAction('finish-control', () =>
+                            updateMatchStatus('CONTROL_DONE'),
+                          )
+                        }
+                        disabled={isAnyActionLoading}
+                        className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {actionLoading === 'finish-control'
+                          ? 'Finalizando controle...'
+                          : 'Marcar controle realizado'}
+                      </button>
+                    </div>
                   )}
 
                   {!canFinishControl && !isControlDone && (

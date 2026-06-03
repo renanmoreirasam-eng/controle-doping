@@ -360,6 +360,7 @@ model MatchOperationalLog {
 
   latitude  Float?
   longitude Float?
+  comment   String? @db.Text
 
   createdAt DateTime @default(now())
 }

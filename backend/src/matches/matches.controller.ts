@@ -89,7 +89,6 @@ export class MatchesController {
     );
   }
 
-
   @Patch(':id/mission-code')
   @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
   async updateMissionCode(
@@ -128,6 +127,7 @@ export class MatchesController {
       status: MatchStatus;
       latitude?: number;
       longitude?: number;
+      comment?: string | null;
     },
     @Req() req: any,
   ) {
@@ -138,10 +138,10 @@ export class MatchesController {
       {
         latitude: body.latitude,
         longitude: body.longitude,
+        comment: body.comment || undefined,
       },
     );
   }
-
 
   @Post(':id/operational-logs')
   @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
@@ -156,6 +156,7 @@ export class MatchesController {
         | 'CONTROL_DONE';
       latitude?: number;
       longitude?: number;
+      comment?: string | null;
     },
     @Req() req: any,
   ) {
@@ -166,6 +167,7 @@ export class MatchesController {
       {
         latitude: body.latitude,
         longitude: body.longitude,
+        comment: body.comment || undefined,
       },
     );
   }

@@ -283,6 +283,7 @@ export class MatchesService {
     location?: {
       latitude?: number;
       longitude?: number;
+      comment?: string;
     },
   ) {
     const match = await this.prisma.match.update({
@@ -312,8 +313,14 @@ export class MatchesService {
     location?: {
       latitude?: number;
       longitude?: number;
+      comment?: string;
     },
   ) {
+    const comment =
+      typeof location?.comment === 'string'
+        ? location.comment.trim()
+        : '';
+
     const existingLog = await this.prisma.matchOperationalLog.findFirst({
       where: {
         matchId,
@@ -322,6 +329,15 @@ export class MatchesService {
     });
 
     if (existingLog) {
+      if (comment) {
+        return this.prisma.matchOperationalLog.update({
+          where: { id: existingLog.id },
+          data: {
+            comment,
+          },
+        });
+      }
+
       return existingLog;
     }
 
@@ -350,6 +366,7 @@ export class MatchesService {
           typeof location?.longitude === 'number'
             ? location.longitude
             : null,
+        comment: comment || null,
       },
     });
   }
