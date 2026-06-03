@@ -14,6 +14,7 @@ type Match = {
   awayTeam: string;
   matchDate: string;
   status: string;
+  updatedAt?: string;
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
   missionCode?: string;
@@ -616,8 +617,19 @@ export default function MatchDetailsPage() {
     !hasRoomInspection;
 
   const hasMissionCode = Boolean(match?.missionCode?.trim());
+  const hasPostMissionProgress =
+    Boolean(getOperationalLog('MATCH_IN_PROGRESS')) ||
+    Boolean(getOperationalLog('DRAW_DONE')) ||
+    Boolean(getOperationalLog('CONTROL_DONE')) ||
+    hasDrawDone ||
+    hasMatchKits ||
+    Boolean(match?.athleteListFileName);
+
   const isMissionCodeConfirmed =
-    missionCodeConfirmed || isMatchInProgress || isControlDone;
+    missionCodeConfirmed ||
+    isMatchInProgress ||
+    isControlDone ||
+    hasPostMissionProgress;
 
   const canFillMissionCode =
     !!match &&
@@ -656,6 +668,8 @@ export default function MatchDetailsPage() {
 
   function getOperationalSnapshot(params: {
     matchStatus?: string;
+    matchMissionCode?: string | null;
+    matchUpdatedAt?: string | null;
     logs?: OperationalLog[];
     drawCount?: number;
     kitCount?: number;
@@ -669,6 +683,8 @@ export default function MatchDetailsPage() {
 
     return [
       params.matchStatus || '',
+      params.matchMissionCode || '',
+      params.matchUpdatedAt || '',
       orderedSteps,
       params.drawCount || 0,
       params.kitCount || 0,
@@ -708,6 +724,8 @@ export default function MatchDetailsPage() {
 
       const nextSnapshot = getOperationalSnapshot({
         matchStatus: nextMatch?.status,
+        matchMissionCode: nextMatch?.missionCode || '',
+        matchUpdatedAt: nextMatch?.updatedAt || '',
         logs: nextOperationalLogs,
         drawCount: nextDraws.length,
         kitCount: nextMatchKits.length,
@@ -716,6 +734,29 @@ export default function MatchDetailsPage() {
       });
 
       const previousSnapshot = lastOperationalSnapshotRef.current;
+
+      const hasConfirmedMissionCodeByProgress =
+        nextMatch?.status === 'IN_PROGRESS' ||
+        nextMatch?.status === 'CONTROL_DONE' ||
+        nextDraws.length > 0 ||
+        nextMatchKits.length > 0 ||
+        Boolean(nextMatch?.athleteListFileName) ||
+        nextOperationalLogs.some((log: OperationalLog) =>
+          ['MATCH_IN_PROGRESS', 'DRAW_DONE', 'CONTROL_DONE'].includes(log.step),
+        );
+
+      const hasConfirmedMissionCodeByRemoteUpdate =
+        Boolean(nextMatch?.missionCode?.trim()) &&
+        Boolean(nextMatch?.updatedAt) &&
+        Boolean(previousSnapshot) &&
+        previousSnapshot !== nextSnapshot;
+
+      if (
+        hasConfirmedMissionCodeByProgress ||
+        hasConfirmedMissionCodeByRemoteUpdate
+      ) {
+        setMissionCodeConfirmed(true);
+      }
 
       setMatch(nextMatch);
       setDraws(nextDraws);
@@ -1018,6 +1059,7 @@ export default function MatchDetailsPage() {
       });
 
       await loadMatch();
+      await refreshOperationData({ silent: true });
       setMissionCodeConfirmed(true);
 
       showMessage('Código confirmado', 'Código da missão confirmado com sucesso!', 'success');
