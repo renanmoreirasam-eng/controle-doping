@@ -373,6 +373,7 @@ export default function MatchDetailsPage() {
   const [savingFinalDocumentFile, setSavingFinalDocumentFile] = useState(false);
   const [modal, setModal] = useState<ModalState>(initialModalState);
   const [actionLoading, setActionLoading] = useState<ActionKey | null>(null);
+  const [scalesLoaded, setScalesLoaded] = useState(false);
   const actionLockRef = useRef<ActionKey | null>(null);
   const lastOperationalSnapshotRef = useRef('');
   const hasShownExternalUpdateRef = useRef(false);
@@ -455,8 +456,15 @@ export default function MatchDetailsPage() {
   }
   
   async function loadScales() {
-    const response = await api.get('/match-officials');
-    setScales(response.data.filter((scale: Scale) => scale.matchId === matchId));
+    try {
+      const response = await api.get('/match-officials');
+
+      setScales(
+        response.data.filter((scale: Scale) => scale.matchId === matchId),
+      );
+    } finally {
+      setScalesLoaded(true);
+    }
   }
 
   async function loadDraws() {
@@ -472,6 +480,8 @@ export default function MatchDetailsPage() {
   
   useEffect(() => {
     if (matchId) {
+      setScalesLoaded(false);
+
       loadMatch();
       loadScales();
       loadDraws();
@@ -1627,11 +1637,62 @@ function formatTimeOnly(date: string) {
   });
 }
 
-  if (!match) {
+  const isCoordinator = userRole === 'COORDINATOR';
+  const isOfficial = userRole === 'OFFICIAL';
+  const userEmail = String(user?.email || user?.user?.email || '').toLowerCase();
+
+  const isCurrentUserScaled = scales.some(
+    (scale) =>
+      scale.official.user.email.trim().toLowerCase() === userEmail,
+  );
+
+  const canAccessOperationPage =
+    isAdmin ||
+    ((isCoordinator || isOfficial) &&
+      isCurrentUserScaled &&
+      !(isOfficial && match?.status === 'CONTROL_DONE'));
+
+  const accessDeniedMessage =
+    isOfficial && match?.status === 'CONTROL_DONE'
+      ? 'Este controle já foi concluído. Oficiais não têm acesso à operação após a finalização.'
+      : 'Você não está escalado para esta partida ou não possui permissão para acessar esta operação.';
+
+  if (!match || !scalesLoaded) {
     return (
       <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
         <Sidebar />
         <div className="flex-1 p-8"><div className="rounded-3xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm">Carregando...</div></div>
+      </main>
+    );
+  }
+
+  if (!canAccessOperationPage) {
+    return (
+      <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
+        <Sidebar />
+
+        <div className="flex-1 p-4 lg:p-8">
+          <div className="mx-auto max-w-3xl rounded-[2rem] border border-red-100 bg-white p-6 shadow-sm lg:p-8">
+            <span className="inline-flex w-fit items-center rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-red-700">
+              Acesso bloqueado
+            </span>
+
+            <h1 className="mt-4 text-2xl font-black text-[var(--cdb-dark)] lg:text-4xl">
+              Operação indisponível
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600 lg:text-base">
+              {accessDeniedMessage}
+            </p>
+
+            <Link
+              href="/dashboard/matches"
+              className="mt-6 inline-flex items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95"
+            >
+              Voltar para jogos
+            </Link>
+          </div>
+        </div>
       </main>
     );
   }
