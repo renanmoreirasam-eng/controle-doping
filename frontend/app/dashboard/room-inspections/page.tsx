@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 import { Sidebar } from '../../../components/Sidebar';
 import { api } from '../../../services/api';
+import { getUser } from '../../../services/auth';
 
 type Stadium = {
   id: string;
@@ -110,7 +111,6 @@ function getItemBadgeClass(status: string) {
   return 'shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200';
 }
 
-
 function formatDate(date: string) {
   return new Date(date).toLocaleString('pt-BR');
 }
@@ -146,6 +146,24 @@ function openDataUrlFile(dataUrl: string) {
 }
 
 export default function RoomInspectionsListPage() {
+  const user = getUser();
+
+  const userRole = String(
+    user?.role || user?.user?.role || '',
+  ).toUpperCase();
+
+  const isOfficial = userRole === 'OFFICIAL';
+  const isCoordinator = userRole === 'COORDINATOR';
+
+  function getMissionCodeDisplay(value?: string | null) {
+    if (!value) return '-';
+
+    if (isOfficial || isCoordinator) {
+      return '***********';
+    }
+
+    return value;
+  }
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [selectedStadiumId, setSelectedStadiumId] = useState('');
   const [inspections, setInspections] = useState<RoomInspection[]>([]);
@@ -464,7 +482,7 @@ export default function RoomInspectionsListPage() {
 
                         {inspection.match.missionCode && (
                           <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-[var(--cdb-blue)]">
-                            Missão {inspection.match.missionCode}
+                            Missão {getMissionCodeDisplay(inspection.match.missionCode)}
                           </span>
                         )}
                       </div>
@@ -484,19 +502,6 @@ export default function RoomInspectionsListPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Link
-                        href={`/dashboard/matches/${inspection.matchId}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                      >
-                        🧪 Ver operação
-                      </Link>
-
-                      <Link
-                        href={`/dashboard/matches/${inspection.matchId}/room-inspection`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                      >
-                        🔎 Ver inspeção
-                      </Link>
                     </div>
                   </div>
 
