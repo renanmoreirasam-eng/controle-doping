@@ -297,6 +297,26 @@ export default function MatchesPage() {
   ).toUpperCase();
 
   const isAdmin = userRole === 'ADMIN';
+  const canViewMatchFiles = userRole !== 'OFFICIAL';
+  const canViewAdminDocumentCards = userRole !== 'OFFICIAL';
+
+  function getMissionCodeDisplay(value?: string | null) {
+    if (!value) return '';
+
+    if (userRole === 'OFFICIAL') {
+      return '*************';
+    }
+
+    return value;
+  }
+
+  function canOpenMatchOperation(match: Match) {
+    if (userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE') {
+      return false;
+    }
+
+    return canAccessMatchOperation(match.matchDate);
+  }
 
   const formRef = useRef<HTMLDivElement | null>(null);
   const missionOrderFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1038,6 +1058,7 @@ export default function MatchesPage() {
               </div>
             </button>
 
+            {canViewAdminDocumentCards && (
             <button
               type="button"
               onClick={() => applyCardFilter('MISSING_DOCUMENTATION', 'DONE')}
@@ -1085,7 +1106,9 @@ export default function MatchesPage() {
                 </div>
               </div>
             </button>
+            )}
 
+            {canViewAdminDocumentCards && (
             <button
               type="button"
               onClick={() => applyCardFilter('MISSION_ORDER', 'ACTIVE')}
@@ -1133,6 +1156,7 @@ export default function MatchesPage() {
                 </div>
               </div>
             </button>
+            )}
 
             <button
               type="button"
@@ -1556,7 +1580,7 @@ export default function MatchesPage() {
                       <div className="min-w-0">
                         {match.missionCode ? (
                           <span className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
-                            🎯 Missão {match.missionCode}
+                            🎯 Missão {getMissionCodeDisplay(match.missionCode)}
                           </span>
                         ) : (
                           <span className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">
@@ -1629,7 +1653,7 @@ export default function MatchesPage() {
                       </p>
 
                       <div className="flex flex-wrap gap-2">
-                        {canAccessMatchOperation(match.matchDate) ? (
+                        {canOpenMatchOperation(match) ? (
                           <Link
                             href={`/dashboard/matches/${match.id}`}
                             className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
@@ -1640,7 +1664,11 @@ export default function MatchesPage() {
                           <button
                             type="button"
                             disabled
-                            title="A operação será liberada a partir do dia do jogo."
+                            title={
+                              userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE'
+                                ? 'Operação finalizada. Oficiais não têm acesso após a conclusão.'
+                                : 'A operação será liberada a partir do dia do jogo.'
+                            }
                             className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
                           >
                             🧪 Operação
@@ -1669,9 +1697,10 @@ export default function MatchesPage() {
                       </div>
                     </div>
 
-                    {(match.missionOrderFileData ||
-                      match.athleteListFileData ||
-                      match.finalDocumentFileData) && (
+                    {canViewMatchFiles &&
+                      (match.missionOrderFileData ||
+                        match.athleteListFileData ||
+                        match.finalDocumentFileData) && (
                       <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
                         <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
                           Arquivos
@@ -1784,7 +1813,7 @@ export default function MatchesPage() {
 
                         {match.missionCode && (
                           <span className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
-                            🎯 Missão {match.missionCode}
+                            🎯 Missão {getMissionCodeDisplay(match.missionCode)}
                           </span>
                         )}
                       </td>
@@ -1828,7 +1857,7 @@ export default function MatchesPage() {
                             </p>
 
                             <div className="flex flex-wrap gap-2">
-                              {canAccessMatchOperation(match.matchDate) ? (
+                              {canOpenMatchOperation(match) ? (
                                 <Link
                                   href={`/dashboard/matches/${match.id}`}
                                   className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
@@ -1839,7 +1868,11 @@ export default function MatchesPage() {
                                 <button
                                   type="button"
                                   disabled
-                                  title="A operação será liberada a partir do dia do jogo."
+                                  title={
+                              userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE'
+                                ? 'Operação finalizada. Oficiais não têm acesso após a conclusão.'
+                                : 'A operação será liberada a partir do dia do jogo.'
+                            }
                                   className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
                                 >
                                   🧪 Operação
@@ -1868,9 +1901,10 @@ export default function MatchesPage() {
                             </div>
                           </div>
 
-                          {(match.missionOrderFileData ||
-                            match.athleteListFileData ||
-                            match.finalDocumentFileData) && (
+                          {canViewMatchFiles &&
+                            (match.missionOrderFileData ||
+                              match.athleteListFileData ||
+                              match.finalDocumentFileData) && (
                             <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
                               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
                                 Arquivos
