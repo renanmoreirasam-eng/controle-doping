@@ -116,6 +116,55 @@ export class MatchesService {
     }
   }
 
+
+  private async notifyMissionOrderAvailableToCoordinators(match: {
+    id: string;
+    homeTeam: string;
+    awayTeam: string;
+  }) {
+    const coordinators = await this.prisma.user.findMany({
+      where: {
+        role: 'COORDINATOR',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const userIds = Array.from(
+      new Set(
+        coordinators
+          .map((coordinator) => coordinator.id)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    if (userIds.length === 0) {
+      return;
+    }
+
+    const body = `A ordem de missão de ${match.homeTeam} x ${match.awayTeam} já está disponível no sistema.`;
+
+    const results = await Promise.allSettled(
+      userIds.map((userId) =>
+        this.pushService.sendToUser(userId, {
+          title: 'Ordem de missão disponível',
+          body,
+          url: `/dashboard/matches/${match.id}`,
+        }),
+      ),
+    );
+
+    const failed = results.filter((result) => result.status === 'rejected');
+
+    if (failed.length > 0) {
+      console.error(
+        'Erro ao enviar algumas notificações de ordem de missão:',
+        failed,
+      );
+    }
+  }
+
   async create(data: {
     championshipId: string;
     stadiumId: string;
@@ -141,7 +190,7 @@ export class MatchesService {
       throw new Error('Data/hora da partida inválida.');
     }
 
-    return this.prisma.match.create({
+    const created = await this.prisma.match.create({
       data: {
         championshipId: data.championshipId,
         stadiumId: data.stadiumId,
@@ -164,6 +213,23 @@ export class MatchesService {
       },
       include: this.includeRelations,
     });
+
+    const hasMissionOrder =
+      Boolean(data.missionOrderFileName) ||
+      Boolean(data.missionOrderFileData);
+
+    if (hasMissionOrder) {
+      await this.notifyMissionOrderAvailableToCoordinators(created).catch(
+        (error) => {
+          console.error(
+            'Erro ao enviar notificação de ordem de missão:',
+            error,
+          );
+        },
+      );
+    }
+
+    return created;
   }
 
   async update(
@@ -200,7 +266,37 @@ export class MatchesService {
       throw new Error('Data/hora da partida inválida.');
     }
 
-    return this.prisma.match.update({
+    const currentMatch = await this.prisma.match.findUnique({
+      where: { id },
+      select: {
+        missionOrderFileName: true,
+        missionOrderFileData: true,
+      },
+    });
+
+    const hasMissionOrderInPayload =
+      data.missionOrderFileName !== undefined ||
+      data.missionOrderFileData !== undefined;
+
+    const nextMissionOrderFileName =
+      data.missionOrderFileName !== undefined
+        ? data.missionOrderFileName || null
+        : currentMatch?.missionOrderFileName || null;
+
+    const nextMissionOrderFileData =
+      data.missionOrderFileData !== undefined
+        ? data.missionOrderFileData || null
+        : currentMatch?.missionOrderFileData || null;
+
+    const shouldNotifyMissionOrder =
+      hasMissionOrderInPayload &&
+      Boolean(nextMissionOrderFileName || nextMissionOrderFileData) &&
+      (
+        nextMissionOrderFileName !== (currentMatch?.missionOrderFileName || null) ||
+        nextMissionOrderFileData !== (currentMatch?.missionOrderFileData || null)
+      );
+
+    const updated = await this.prisma.match.update({
       where: { id },
       data: {
         championshipId: data.championshipId,
@@ -224,6 +320,19 @@ export class MatchesService {
       },
       include: this.includeRelations,
     });
+
+    if (shouldNotifyMissionOrder) {
+      await this.notifyMissionOrderAvailableToCoordinators(updated).catch(
+        (error) => {
+          console.error(
+            'Erro ao enviar notificação de ordem de missão:',
+            error,
+          );
+        },
+      );
+    }
+
+    return updated;
   }
 
   async updateMissionCode(id: string, missionCode: string) {

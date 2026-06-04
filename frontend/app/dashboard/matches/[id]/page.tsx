@@ -378,8 +378,104 @@ export default function MatchDetailsPage() {
   const actionLockRef = useRef<ActionKey | null>(null);
   const lastOperationalSnapshotRef = useRef('');
   const hasShownExternalUpdateRef = useRef(false);
+  const isUserEditingRef = useRef(false);
+  const editingTimeoutRef = useRef<number | null>(null);
 
   const isAnyActionLoading = Boolean(actionLoading);
+
+  function isEditableElement(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+
+    return Boolean(
+      target.closest('input, textarea, select, [contenteditable="true"]'),
+    );
+  }
+
+  function keepAutomaticRefreshPaused() {
+    isUserEditingRef.current = true;
+
+    if (editingTimeoutRef.current) {
+      window.clearTimeout(editingTimeoutRef.current);
+    }
+  }
+
+  function releaseAutomaticRefreshAfterDelay() {
+    if (editingTimeoutRef.current) {
+      window.clearTimeout(editingTimeoutRef.current);
+    }
+
+    editingTimeoutRef.current = window.setTimeout(() => {
+      isUserEditingRef.current = false;
+    }, 1500);
+  }
+
+  function handleOperationFormFocus(event: React.FocusEvent<HTMLElement>) {
+    if (!isEditableElement(event.target)) return;
+
+    keepAutomaticRefreshPaused();
+  }
+
+  function handleOperationFormBlur(event: React.FocusEvent<HTMLElement>) {
+    if (!isEditableElement(event.target)) return;
+
+    releaseAutomaticRefreshAfterDelay();
+  }
+
+  function handleOperationFormInput(event: React.FormEvent<HTMLElement>) {
+    if (!isEditableElement(event.target)) return;
+
+    keepAutomaticRefreshPaused();
+  }
+
+  function getMissionCodeConfirmationStorageKey() {
+    return `controle-doping:mission-code-confirmed:${matchId}`;
+  }
+
+  function getStoredMissionCodeConfirmation(missionCode?: string | null) {
+    if (typeof window === 'undefined') return false;
+
+    try {
+      const storedValue = window.localStorage.getItem(
+        getMissionCodeConfirmationStorageKey(),
+      );
+
+      if (!storedValue || !missionCode?.trim()) {
+        return false;
+      }
+
+      const parsedValue = JSON.parse(storedValue) as {
+        missionCode?: string;
+      };
+
+      return parsedValue.missionCode === missionCode.trim();
+    } catch (error) {
+      console.warn(
+        'Não foi possível ler a confirmação local do código da missão.',
+        error,
+      );
+
+      return false;
+    }
+  }
+
+  function saveMissionCodeConfirmation(missionCode: string) {
+    if (typeof window === 'undefined') return;
+
+    try {
+      window.localStorage.setItem(
+        getMissionCodeConfirmationStorageKey(),
+        JSON.stringify({
+          missionCode: missionCode.trim(),
+          confirmedAt: new Date().toISOString(),
+        }),
+      );
+    } catch (error) {
+      console.warn(
+        'Não foi possível salvar a confirmação local do código da missão.',
+        error,
+      );
+    }
+  }
 
   async function runExclusiveAction(
     actionKey: ActionKey,
@@ -509,6 +605,14 @@ export default function MatchDetailsPage() {
   }, [matchId]);
 
   useEffect(() => {
+    return () => {
+      if (editingTimeoutRef.current) {
+        window.clearTimeout(editingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const nextForm = {
       HOME: createEmptySubstitutionRows(),
       AWAY: createEmptySubstitutionRows(),
@@ -561,12 +665,24 @@ export default function MatchDetailsPage() {
   }, [running]);
 
   useEffect(() => {
-    setMissionCodeInput(match?.missionCode || '');
+    const currentMissionCode = match?.missionCode || '';
 
-    if (match?.status === 'IN_PROGRESS' || match?.status === 'CONTROL_DONE') {
+    setMissionCodeInput(currentMissionCode);
+
+    const hasStoredConfirmation =
+      getStoredMissionCodeConfirmation(currentMissionCode);
+
+    if (
+      hasStoredConfirmation ||
+      match?.status === 'IN_PROGRESS' ||
+      match?.status === 'CONTROL_DONE'
+    ) {
       setMissionCodeConfirmed(true);
+      return;
     }
-  }, [match?.missionCode, match?.status]);
+
+    setMissionCodeConfirmed(false);
+  }, [match?.missionCode, match?.status, matchId]);
   
   const hasRoomInspection = roomInspections.length > 0;
   const isControlDone = match?.status === 'CONTROL_DONE';
@@ -696,6 +812,10 @@ export default function MatchDetailsPage() {
   async function refreshOperationData(options?: { silent?: boolean }) {
     if (!matchId || actionLockRef.current) return;
 
+    if (!options?.silent && isUserEditingRef.current) {
+      return;
+    }
+
     try {
       const [
         matchResponse,
@@ -751,9 +871,13 @@ export default function MatchDetailsPage() {
         Boolean(previousSnapshot) &&
         previousSnapshot !== nextSnapshot;
 
+      const hasConfirmedMissionCodeByLocalStorage =
+        getStoredMissionCodeConfirmation(nextMatch?.missionCode || '');
+
       if (
         hasConfirmedMissionCodeByProgress ||
-        hasConfirmedMissionCodeByRemoteUpdate
+        hasConfirmedMissionCodeByRemoteUpdate ||
+        hasConfirmedMissionCodeByLocalStorage
       ) {
         setMissionCodeConfirmed(true);
       }
@@ -775,12 +899,6 @@ export default function MatchDetailsPage() {
         !hasShownExternalUpdateRef.current
       ) {
         hasShownExternalUpdateRef.current = true;
-
-        showMessage(
-          'Operação atualizada',
-          'Alguma etapa foi registrada por outro usuário. A tela foi atualizada com as informações mais recentes.',
-          'warning',
-        );
       }
     } catch (error) {
       console.warn('Não foi possível atualizar automaticamente a operação.', error);
@@ -1057,6 +1175,8 @@ export default function MatchDetailsPage() {
       await api.patch(`/matches/${matchId}/mission-code`, {
         missionCode,
       });
+
+      saveMissionCodeConfirmation(missionCode);
 
       await loadMatch();
       await refreshOperationData({ silent: true });
@@ -1740,7 +1860,13 @@ function formatTimeOnly(date: string) {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
+    <main
+      className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row"
+      onFocusCapture={handleOperationFormFocus}
+      onBlurCapture={handleOperationFormBlur}
+      onInputCapture={handleOperationFormInput}
+      onChangeCapture={handleOperationFormInput}
+    >
       <Sidebar />
 
       <div className="flex-1">
@@ -1776,7 +1902,7 @@ function formatTimeOnly(date: string) {
 
                     {match.missionCode && (
                       <span className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-black text-[var(--cdb-blue)]">
-                        Missão {match.missionCode}
+                        Missão {userRole === 'OFFICIAL' ? '**********' : match.missionCode}
                       </span>
                     )}
                   </div>
@@ -2070,11 +2196,11 @@ function formatTimeOnly(date: string) {
                           </p>
 
                           <p className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
-                            {match.missionCode}
+                            {userRole === 'OFFICIAL' ? '**********' : match.missionCode}
                           </p>
                         </div>
 
-                        {match.missionOrderFileData && (
+                        {userRole !== 'OFFICIAL' && match.missionOrderFileData && (
                           <button
                             type="button"
                             onClick={() =>
@@ -2111,7 +2237,7 @@ function formatTimeOnly(date: string) {
                         </p>
                       )}
 
-                      {match.missionOrderFileData && (
+                      {userRole !== 'OFFICIAL' && match.missionOrderFileData && (
                         <div className="mt-3 flex justify-end">
                           <button
                             type="button"
