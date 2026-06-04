@@ -14,7 +14,7 @@ import { RoomInspectionsModule } from './room-inspections/room-inspections.modul
 import { PushModule } from './push/push.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
-
+import { AdminTasksModule } from './admin-tasks/admin-tasks.module';
 
 @Module({
   imports: [
@@ -33,6 +33,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
     PushModule,
     InventoryModule,
     AnnouncementsModule,
+    AdminTasksModule,
   ],
 })
 export class AppModule {}

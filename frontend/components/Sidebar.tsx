@@ -44,6 +44,12 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
+    name: 'Agenda',
+    href: '/dashboard/agenda',
+    icon: '🗓️',
+    roles: ['ADMIN'],
+  },
+  {
     name: 'Comunicados',
     href: '/dashboard/announcements',
     icon: '📢',

@@ -26,6 +26,8 @@ model User {
   pushSubscriptions PushSubscription[]
 
   announcementAcknowledgements AnnouncementAcknowledgement[]
+
+  adminTasksCreated AdminTask[] @relation("AdminTaskCreator")
 }
 
 model Official {
@@ -425,4 +427,28 @@ enum AnnouncementTargetRole {
   ALL
   COORDINATOR
   OFFICIAL
+}
+
+model AdminTask {
+  id String @id @default(cuid())
+
+  title       String
+  description String? @db.Text
+
+  dueDate  DateTime
+  remindAt DateTime?
+
+  done   Boolean   @default(false)
+  doneAt DateTime?
+
+  createdByUserId String?
+  createdBy        User?   @relation("AdminTaskCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByName    String?
+  createdByEmail   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dueDate])
+  @@index([done])
 }
