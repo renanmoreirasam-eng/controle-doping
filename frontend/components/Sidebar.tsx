@@ -31,12 +31,12 @@ const allMenus = [
     icon: '📦',
     roles: ['ADMIN', 'COORDINATOR'],
   },
-{
-  name: 'Envio ao Laboratório',
-  href: '/dashboard/lbcd-shipping',
-  icon: '🚚',
-  roles: ['ADMIN'],
-},
+  {
+    name: 'Envio ao Laboratório',
+    href: '/dashboard/lbcd-shipping',
+    icon: '🚚',
+    roles: ['ADMIN'],
+  },
   {
     name: 'Inspeções de Sala',
     href: '/dashboard/room-inspections',
@@ -80,6 +80,19 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR'],
   },
 ];
+
+function DeveloperSignature() {
+  return (
+    <div className="mt-6 border-t border-white/10 pt-4 text-center">
+      <p className="text-[11px] font-semibold leading-5 text-blue-100/70">
+        Controle de Doping © 2026
+        <br />
+        Desenvolvido por{' '}
+        <span className="font-black text-white">SampSoluções</span>
+      </p>
+    </div>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -236,6 +249,8 @@ export function Sidebar() {
                 Sair
               </button>
             </div>
+
+            <DeveloperSignature />
           </aside>
         </div>
       )}
@@ -270,6 +285,8 @@ export function Sidebar() {
             Sair
           </button>
         </div>
+
+        <DeveloperSignature />
       </aside>
 
       <PendingAnnouncementsModal />

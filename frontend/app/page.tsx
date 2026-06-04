@@ -249,6 +249,13 @@ export default function LoginPage() {
         </section>
       </div>
 
+      <div className="absolute bottom-4 left-0 right-0 z-10 px-4 text-center">
+        <p className="text-xs font-semibold text-white/70">
+          Controle de Doping © 2026 · Desenvolvido por{' '}
+          <span className="font-black text-white">SampSoluções</span>
+        </p>
+      </div>          
+      
       <ConfirmModal
         open={modal.open}
         title={modal.title}
