@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "KitMovementType" ADD VALUE 'ENVIADO_LABORATORIO';
+
+-- AlterEnum
+ALTER TYPE "KitStatus" ADD VALUE 'ENVIADO_LABORATORIO';

@@ -111,6 +111,13 @@ listLbcdShippingKits(@Req() req: any) {
   return this.inventoryService.listLbcdShippingKits(req.user);
 }
 
+@Patch("lbcd-shipping/mark-sent")
+markLbcdShippingKitsAsSent(@Req() req: any, @Body() body: any) {
+  return this.inventoryService.markLbcdShippingKitsAsSent(req.user, {
+    kitIds: body.kitIds,
+  });
+}
+
   @Get("matches/:matchId/kits")
   listMatchKits(@Param("matchId") matchId: string) {
     return this.inventoryService.listMatchKits(matchId);

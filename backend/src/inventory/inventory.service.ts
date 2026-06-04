@@ -90,7 +90,7 @@ export class InventoryService {
           kits: {
             where: {
               status: {
-                in: ["COM_DCO", "UTILIZADO"],
+                in: ["COM_DCO", "UTILIZADO", "ENVIADO_LABORATORIO"],
               },
             },
             select: {
@@ -112,6 +112,7 @@ export class InventoryService {
           comDco: 0,
           vinculadoJogo: 0,
           utilizado: 0,
+          enviadoLaboratorio: 0,
           cancelado: 0,
           byDco: [],
         };
@@ -126,6 +127,9 @@ export class InventoryService {
         vinculadoJogo: 0,
         utilizado: official.kits.filter((kit) => kit.status === "UTILIZADO")
           .length,
+        enviadoLaboratorio: official.kits.filter(
+          (kit) => kit.status === "ENVIADO_LABORATORIO",
+        ).length,
         cancelado: 0,
         byDco: [
           {
@@ -145,6 +149,7 @@ export class InventoryService {
       comDco,
       vinculadoJogo,
       utilizado,
+      enviadoLaboratorio,
       cancelado,
       byDco,
     ] = await Promise.all([
@@ -153,6 +158,7 @@ export class InventoryService {
       this.prisma.kit.count({ where: { status: "COM_DCO" } }),
       this.prisma.kit.count({ where: { status: "VINCULADO_JOGO" } }),
       this.prisma.kit.count({ where: { status: "UTILIZADO" } }),
+      this.prisma.kit.count({ where: { status: "ENVIADO_LABORATORIO" } }),
       this.prisma.kit.count({ where: { status: "CANCELADO" } }),
       this.prisma.official.findMany({
         where: {
@@ -198,6 +204,7 @@ export class InventoryService {
       comDco,
       vinculadoJogo,
       utilizado,
+      enviadoLaboratorio,
       cancelado,
       byDco: byDco.map((official) => ({
         officialId: official.id,
@@ -492,7 +499,7 @@ export class InventoryService {
       where: {
         currentOfficialId: official.id,
         status: {
-          in: ["COM_DCO", "UTILIZADO"],
+          in: ["COM_DCO", "UTILIZADO", "ENVIADO_LABORATORIO"],
         },
       },
       include: {
@@ -930,6 +937,9 @@ async listLbcdShippingKits(user: AuthUser) {
       match: {
         status: "CONTROL_DONE",
       },
+      kit: {
+        status: "UTILIZADO",
+      },
     },
     include: {
       kit: {
@@ -1018,6 +1028,112 @@ async listLbcdShippingKits(user: AuthUser) {
   }
 
   return Array.from(grouped.values());
+}
+
+async markLbcdShippingKitsAsSent(
+  user: AuthUser,
+  data: {
+    kitIds: string[];
+  },
+) {
+  this.ensureAdmin(user);
+
+  const kitIds = Array.isArray(data.kitIds)
+    ? Array.from(new Set(data.kitIds.filter(Boolean)))
+    : [];
+
+  if (kitIds.length === 0) {
+    throw new BadRequestException("Selecione pelo menos um kit para marcar como enviado.");
+  }
+
+  const kits = await this.prisma.kit.findMany({
+    where: {
+      id: {
+        in: kitIds,
+      },
+    },
+    include: {
+      matchKits: {
+        where: {
+          match: {
+            status: "CONTROL_DONE",
+          },
+        },
+        include: {
+          match: {
+            select: {
+              id: true,
+              homeTeam: true,
+              awayTeam: true,
+              missionCode: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+    },
+  });
+
+  if (kits.length !== kitIds.length) {
+    throw new BadRequestException("Um ou mais kits selecionados não foram encontrados.");
+  }
+
+  const invalidKits = kits.filter((kit) => {
+    return kit.status !== "UTILIZADO" || kit.matchKits.length === 0;
+  });
+
+  if (invalidKits.length > 0) {
+    throw new BadRequestException(
+      `Existem kits que não podem ser enviados ao laboratório: ${invalidKits
+        .map((kit) => kit.number)
+        .join(", ")}.`,
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    await tx.kit.updateMany({
+      where: {
+        id: {
+          in: kitIds,
+        },
+      },
+      data: {
+        status: "ENVIADO_LABORATORIO",
+      },
+    });
+
+    await Promise.all(
+      kits.map((kit) => {
+        const matchKit = kit.matchKits[0];
+        const match = matchKit.match;
+
+        return tx.kitMovement.create({
+          data: {
+            kitId: kit.id,
+            type: "ENVIADO_LABORATORIO",
+            matchId: match.id,
+            userId: user.id,
+            userName: user.name,
+            userEmail: user.email,
+            notes: `Kit ${kit.number} marcado como enviado ao laboratório. Jogo: ${match.homeTeam} x ${match.awayTeam}. Missão: ${match.missionCode || "não informada"}.`,
+          },
+        });
+      }),
+    );
+
+    return {
+      message: "Kits marcados como enviados ao laboratório com sucesso.",
+      total: kits.length,
+      kits: kits.map((kit) => ({
+        id: kit.id,
+        number: kit.number,
+        status: "ENVIADO_LABORATORIO",
+      })),
+    };
+  });
 }
 
   async listMatchKits(matchId: string) {

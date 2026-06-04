@@ -29,6 +29,7 @@ type KitStatus =
   | "COM_DCO"
   | "VINCULADO_JOGO"
   | "UTILIZADO"
+  | "ENVIADO_LABORATORIO"
   | "CANCELADO";
 
 type Kit = {
@@ -59,6 +60,7 @@ type InventorySummary = {
   comDco: number;
   vinculadoJogo: number;
   utilizado: number;
+  enviadoLaboratorio: number;
   cancelado: number;
   byDco: {
     officialId: string;
@@ -90,6 +92,7 @@ const statusLabel: Record<KitStatus, string> = {
   COM_DCO: "Com DCO",
   VINCULADO_JOGO: "Vinculado ao jogo",
   UTILIZADO: "Utilizado",
+  ENVIADO_LABORATORIO: "Enviado laboratório",
   CANCELADO: "Cancelado",
 };
 
@@ -98,6 +101,7 @@ const statusClass: Record<KitStatus, string> = {
   COM_DCO: "bg-blue-50 text-blue-700 border-blue-200",
   VINCULADO_JOGO: "bg-amber-50 text-amber-700 border-amber-200",
   UTILIZADO: "bg-slate-100 text-slate-700 border-slate-200",
+  ENVIADO_LABORATORIO: "bg-purple-50 text-purple-700 border-purple-200",
   CANCELADO: "bg-red-50 text-red-700 border-red-200",
 };
 
@@ -723,7 +727,10 @@ export default function InventoryPage() {
   }, [availableKits]);
 
   const myKitsComDco = myKits.filter((kit) => kit.status === "COM_DCO");
-  const myKitsUtilizados = myKits.filter((kit) => kit.status === "UTILIZADO");
+  const myKitsUtilizados = myKits.filter(
+    (kit) =>
+      kit.status === "UTILIZADO" || kit.status === "ENVIADO_LABORATORIO",
+  );
   const visibleKits = isAdmin
     ? kits
     : myKitsView === "COM_DCO"
@@ -773,8 +780,11 @@ export default function InventoryPage() {
                   icon="👤"
                 />
                 <SummaryCard
-                  title="Utilizados"
-                  value={summary?.utilizado ?? 0}
+                  title="Utilizados + enviado Lab"
+                  value={
+                    (summary?.utilizado ?? 0) +
+                    (summary?.enviadoLaboratorio ?? 0)
+                  }
                   icon="🧪"
                 />
                 <SummaryCard
@@ -1176,7 +1186,7 @@ export default function InventoryPage() {
                             : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                         }`}
                       >
-                        Utilizados ({myKitsUtilizados.length})
+                        Utilizados + enviado Lab ({myKitsUtilizados.length})
                       </button>
                     </div>
                   )}
@@ -1213,6 +1223,9 @@ export default function InventoryPage() {
                       <option value="DISPONIVEL">Disponível</option>
                       <option value="COM_DCO">Com DCO</option>
                       <option value="UTILIZADO">Utilizado</option>
+                      <option value="ENVIADO_LABORATORIO">
+                        Enviado laboratório
+                      </option>
                       <option value="CANCELADO">Cancelado</option>
                     </select>
 
@@ -1254,7 +1267,7 @@ export default function InventoryPage() {
                     ? "Nenhum kit encontrado."
                     : myKitsView === "COM_DCO"
                       ? "Você não possui kits com status Com DCO no momento."
-                      : "Você ainda não possui kits utilizados."}
+                      : "Você ainda não possui kits utilizados ou enviados ao laboratório."}
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-3xl border border-slate-200">
