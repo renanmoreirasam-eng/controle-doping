@@ -105,6 +105,12 @@ export class InventoryController {
     return this.inventoryService.returnKitToStock(req.user, kitId);
   }
 
+
+@Get("lbcd-shipping/kits")
+listLbcdShippingKits(@Req() req: any) {
+  return this.inventoryService.listLbcdShippingKits(req.user);
+}
+
   @Get("matches/:matchId/kits")
   listMatchKits(@Param("matchId") matchId: string) {
     return this.inventoryService.listMatchKits(matchId);

@@ -921,6 +921,105 @@ export class InventoryService {
     });
   }
 
+
+async listLbcdShippingKits(user: AuthUser) {
+  this.ensureAdmin(user);
+
+  const matchKits = await this.prisma.matchKit.findMany({
+    where: {
+      match: {
+        status: "CONTROL_DONE",
+      },
+    },
+    include: {
+      kit: {
+        select: {
+          id: true,
+          number: true,
+          status: true,
+        },
+      },
+      official: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+      match: {
+        select: {
+          id: true,
+          homeTeam: true,
+          awayTeam: true,
+          matchDate: true,
+          missionCode: true,
+          status: true,
+          championship: {
+            select: {
+              name: true,
+            },
+          },
+          stadium: {
+            select: {
+              name: true,
+              city: true,
+              state: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [
+      {
+        match: {
+          matchDate: "desc",
+        },
+      },
+      {
+        kit: {
+          number: "asc",
+        },
+      },
+    ],
+  });
+
+  const grouped = new Map<string, any>();
+
+  for (const item of matchKits) {
+    const current = grouped.get(item.matchId) || {
+      matchId: item.matchId,
+      missionCode: item.match.missionCode,
+      homeTeam: item.match.homeTeam,
+      awayTeam: item.match.awayTeam,
+      matchDate: item.match.matchDate,
+      status: item.match.status,
+      championshipName: item.match.championship?.name || null,
+      stadiumName: item.match.stadium?.name || null,
+      stadiumCity: item.match.stadium?.city || null,
+      stadiumState: item.match.stadium?.state || null,
+      kits: [],
+    };
+
+    current.kits.push({
+      matchKitId: item.id,
+      kitId: item.kitId,
+      number: item.kit.number,
+      status: item.kit.status,
+      usedAt: item.usedAt,
+      officialName: item.official?.user?.name || null,
+      officialEmail: item.official?.user?.email || null,
+    });
+
+    grouped.set(item.matchId, current);
+  }
+
+  return Array.from(grouped.values());
+}
+
   async listMatchKits(matchId: string) {
     return this.prisma.matchKit.findMany({
       where: {

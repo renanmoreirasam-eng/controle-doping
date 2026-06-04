@@ -31,6 +31,12 @@ const allMenus = [
     icon: '📦',
     roles: ['ADMIN', 'COORDINATOR'],
   },
+{
+  name: 'Envio ao Laboratório',
+  href: '/dashboard/lbcd-shipping',
+  icon: '🚚',
+  roles: ['ADMIN'],
+},
   {
     name: 'Inspeções de Sala',
     href: '/dashboard/room-inspections',
