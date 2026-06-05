@@ -356,10 +356,17 @@ export default function MatchesPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const statusFilter = params.get('status');
+    const filter = params.get('filter');
 
     if (statusFilter === 'CONTROL_DONE') {
       setActiveTab('DONE');
       setCardFilter('COMPLETED');
+      return;
+    }
+
+    if (filter === 'MISSION_ORDER') {
+      setActiveTab('ACTIVE');
+      setCardFilter('MISSION_ORDER');
     }
   }, []);
 

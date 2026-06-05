@@ -275,7 +275,7 @@ export default function Dashboard() {
 
             {isAdmin && (
               <Link
-                href="/dashboard/scales"
+                href="/dashboard/matches?filter=MISSION_ORDER"
                 className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
                   scalesWithoutMissionOrderCount > 0
                     ? 'bg-purple-50 border-purple-200'
