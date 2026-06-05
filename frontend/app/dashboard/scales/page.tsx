@@ -23,7 +23,6 @@ type Match = {
 type Official = {
   id: string;
   active: boolean;
-  operationalRole?: string | null;
   user: {
     id?: string;
     name: string;
@@ -45,6 +44,48 @@ type ScaleGroup = {
   match: Match;
   dco?: Scale;
   assistant?: Scale;
+};
+
+type Pagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
+type ScaleSummary = {
+  activeScaleGroups: number;
+  doneScaleGroups: number;
+  pendingScales: number;
+  refusedScales: number;
+  confirmedScales: number;
+  confirmedActiveScales?: number;
+  confirmedDoneScales?: number;
+  scalesWithoutMissionOrder: number;
+};
+
+const PAGE_LIMIT = 10;
+
+const initialPagination: Pagination = {
+  page: 1,
+  limit: PAGE_LIMIT,
+  total: 0,
+  totalPages: 1,
+  hasPreviousPage: false,
+  hasNextPage: false,
+};
+
+const initialSummary: ScaleSummary = {
+  activeScaleGroups: 0,
+  doneScaleGroups: 0,
+  pendingScales: 0,
+  refusedScales: 0,
+  confirmedScales: 0,
+  confirmedActiveScales: 0,
+  confirmedDoneScales: 0,
+  scalesWithoutMissionOrder: 0,
 };
 
 type ModalVariant = "danger" | "success" | "warning" | "default";
@@ -72,24 +113,6 @@ function getErrorMessage(error: any, fallback: string) {
   return Array.isArray(message) ? message.join(" ") : String(message);
 }
 
-function normalizeText(value?: string | null) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toUpperCase();
-}
-
-function isDcoOfficial(official: Official) {
-  return normalizeText(official.operationalRole).includes('DCO');
-}
-
-function sortOfficialsByName(a: Official, b: Official) {
-  return a.user.name.localeCompare(b.user.name, 'pt-BR', {
-    sensitivity: 'base',
-  });
-}
-
 function ScalesPageContent() {
   const searchParams = useSearchParams();
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -102,14 +125,18 @@ function ScalesPageContent() {
   const [endDate, setEndDate] = useState("");
   const [scaleStatusFilter, setScaleStatusFilter] = useState("");
   const [scaleTab, setScaleTab] = useState<"ACTIVE" | "DONE">("ACTIVE");
+  const [scaleGroups, setScaleGroups] = useState<ScaleGroup[]>([]);
+  const [pagination, setPagination] = useState<Pagination>(initialPagination);
+  const [summary, setSummary] = useState<ScaleSummary>(initialSummary);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState("");
 
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [matchId, setMatchId] = useState("");
   const [dcoOfficialId, setDcoOfficialId] = useState("");
   const [assistantOfficialId, setAssistantOfficialId] = useState("");
   const [modal, setModal] = useState<ModalState>(initialModalState);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [loadingError, setLoadingError] = useState("");
 
   const user = getUser();
 
@@ -120,21 +147,6 @@ function ScalesPageContent() {
   const loggedUserEmail = user?.email || user?.user?.email;
 
   const isAdmin = userRole === "ADMIN";
-
-  const dcoOfficials = useMemo(
-    () => officials.filter(isDcoOfficial).sort(sortOfficialsByName),
-    [officials],
-  );
-
-  const assistantOfficialOptions = useMemo(() => {
-    const assistantOfficials = officials
-      .filter((official) => !isDcoOfficial(official))
-      .sort(sortOfficialsByName);
-
-    const dcoOptions = officials.filter(isDcoOfficial).sort(sortOfficialsByName);
-
-    return [...assistantOfficials, ...dcoOptions];
-  }, [officials]);
 
   function closeModal() {
     setModal(initialModalState);
@@ -176,9 +188,48 @@ function ScalesPageContent() {
     });
   }
 
-  async function loadScales() {
-    const response = await api.get("/match-officials");
-    setScales(response.data);
+  async function loadScales(pageToLoad = currentPage) {
+    try {
+      setListLoading(true);
+      setListError("");
+
+      const response = await api.get("/match-officials/groups", {
+        params: {
+          tab: scaleTab,
+          status: scaleStatusFilter || undefined,
+          search: search.trim() || undefined,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          page: pageToLoad,
+          limit: PAGE_LIMIT,
+        },
+      });
+
+      const groups: ScaleGroup[] = response.data?.data || [];
+
+      setScaleGroups(groups);
+      setPagination(response.data?.pagination || initialPagination);
+      setSummary(response.data?.summary || initialSummary);
+
+      setScales(
+        groups.flatMap((group) =>
+          [group.dco, group.assistant].filter(Boolean) as Scale[],
+        ),
+      );
+    } catch (error: any) {
+      setListError(
+        getErrorMessage(
+          error,
+          "Não foi possível carregar a lista de escalas.",
+        ),
+      );
+      setScaleGroups([]);
+      setScales([]);
+      setPagination(initialPagination);
+      setSummary(initialSummary);
+    } finally {
+      setListLoading(false);
+    }
   }
 
   async function loadMatches() {
@@ -191,37 +242,9 @@ function ScalesPageContent() {
     setOfficials(response.data.filter((item: Official) => item.active));
   }
 
-  async function loadInitialData() {
-    try {
-      setInitialLoading(true);
-      setLoadingError("");
-
-      const [scalesResponse, matchesResponse, officialsResponse] =
-        await Promise.all([
-          api.get("/match-officials"),
-          api.get("/matches"),
-          api.get("/officials"),
-        ]);
-
-      setScales(scalesResponse.data);
-      setMatches(matchesResponse.data);
-      setOfficials(
-        officialsResponse.data.filter((item: Official) => item.active),
-      );
-    } catch (error: any) {
-      setLoadingError(
-        getErrorMessage(
-          error,
-          "Não foi possível carregar as escalas. Tente atualizar a página.",
-        ),
-      );
-    } finally {
-      setInitialLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadInitialData();
+    loadMatches();
+    loadOfficials();
   }, []);
 
   useEffect(() => {
@@ -235,6 +258,14 @@ function ScalesPageContent() {
       setScaleStatusFilter(status);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [scaleTab, scaleStatusFilter, search, startDate, endDate]);
+
+  useEffect(() => {
+    loadScales(currentPage);
+  }, [currentPage, scaleTab, scaleStatusFilter, search, startDate, endDate]);
 
   function canConfirmScale(scale?: Scale) {
     if (!scale) return false;
@@ -267,102 +298,19 @@ function ScalesPageContent() {
     );
   }
 
-  const groupedScales = useMemo(() => {
-    const map = new Map<string, ScaleGroup>();
+  const groupedScales = scaleGroups;
 
-    for (const scale of scales) {
-      if (!map.has(scale.matchId)) {
-        map.set(scale.matchId, {
-          match: scale.match,
-        });
-      }
+  const filteredGroups = groupedScales;
 
-      const group = map.get(scale.matchId)!;
-
-      if (scale.role === "DCO") {
-        group.dco = scale;
-      }
-
-      if (scale.role === "ASSISTANT") {
-        group.assistant = scale;
-      }
-    }
-
-    const groups = Array.from(map.values());
-
-    if (isAdmin) {
-      return groups;
-    }
-
-    return groups.filter(
-      (group) => canConfirmScale(group.dco) || canConfirmScale(group.assistant),
-    );
-  }, [scales, isAdmin, loggedUserId, loggedUserEmail]);
-
-  const filteredGroups = groupedScales.filter((group) => {
-    const value = `
-      ${group.match.homeTeam}
-      ${group.match.awayTeam}
-      ${group.match.championship.name}
-      ${group.match.stadium.name}
-      ${group.match.stadium.city}
-      ${group.dco?.official.user.name || ""}
-      ${group.assistant?.official.user.name || ""}
-    `.toLowerCase();
-
-    const matchesSearch = value.includes(search.toLowerCase());
-
-    const matchDate = new Date(group.match.matchDate);
-
-    const matchesStartDate = startDate
-      ? matchDate >= new Date(`${startDate}T00:00:00`)
-      : true;
-
-    const matchesEndDate = endDate
-      ? matchDate <= new Date(`${endDate}T23:59:59`)
-      : true;
-
-    const scaleStatuses = [group.dco?.confirmed, group.assistant?.confirmed];
-
-    const matchesScaleStatus =
-      !scaleStatusFilter ||
-      scaleStatuses.some((confirmed) => {
-        if (scaleStatusFilter === "PENDING") {
-          return confirmed === null || confirmed === undefined;
-        }
-
-        if (scaleStatusFilter === "CONFIRMED") {
-          return confirmed === true;
-        }
-
-        if (scaleStatusFilter === "REFUSED") {
-          return confirmed === false;
-        }
-
-        return true;
-      });
-
-    const matchesScaleTab =
-      scaleTab === "DONE"
-        ? group.match.status === "CONTROL_DONE"
-        : group.match.status !== "CONTROL_DONE";
-
-    return (
-      matchesSearch &&
-      matchesStartDate &&
-      matchesEndDate &&
-      matchesScaleStatus &&
-      matchesScaleTab
-    );
-  });
-
-  const activeScaleGroups = groupedScales.filter(
-    (group) => group.match.status !== "CONTROL_DONE",
-  ).length;
-
-  const doneScaleGroups = groupedScales.filter(
-    (group) => group.match.status === "CONTROL_DONE",
-  ).length;
+  const activeScaleGroups = summary.activeScaleGroups;
+  const doneScaleGroups = summary.doneScaleGroups;
+  const pendingScalesCount = summary.pendingScales;
+  const refusedScalesCount = summary.refusedScales;
+  const confirmedScalesCount =
+    scaleTab === "DONE"
+      ? summary.confirmedDoneScales ?? summary.confirmedScales
+      : summary.confirmedActiveScales ?? summary.confirmedScales;
+  const scalesWithoutMissionOrderCount = summary.scalesWithoutMissionOrder;
 
   const availableMatches = useMemo(() => {
     return matches
@@ -384,43 +332,6 @@ function ScalesPageContent() {
           new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime(),
       );
   }, [matches, groupedScales, editingMatchId]);
-
-  const visibleScales = useMemo(() => {
-    if (isAdmin) return scales;
-
-    return scales.filter((scale) => isOwnScale(scale));
-  }, [isAdmin, scales, loggedUserId, loggedUserEmail]);
-
-  const pendingScales = useMemo(() => {
-    return visibleScales.filter(
-      (scale) => scale.confirmed === null || scale.confirmed === undefined,
-    );
-  }, [visibleScales]);
-
-  const refusedScales = useMemo(() => {
-    return scales.filter((scale) => scale.confirmed === false);
-  }, [scales]);
-
-  const scalesWithoutMissionOrder = useMemo(() => {
-    const uniqueMatches = new Map<string, Match>();
-
-    for (const scale of scales) {
-      const match = scale.match;
-
-      if (!match?.id) continue;
-      if (match.status === "CONTROL_DONE") continue;
-      if (match.status === "CANCELED") continue;
-      if (hasMissionOrder(match)) continue;
-
-      uniqueMatches.set(match.id, match);
-    }
-
-    return Array.from(uniqueMatches.values());
-  }, [scales]);
-
-  const confirmedScales = useMemo(() => {
-    return visibleScales.filter((scale) => scale.confirmed === true);
-  }, [visibleScales]);
 
   function clearForm() {
     setEditingMatchId(null);
@@ -461,6 +372,32 @@ function ScalesPageContent() {
     }
 
     return "bg-yellow-100 text-yellow-700 border border-yellow-200";
+  }
+
+  function renderScaleStatus(
+    scale?: Scale,
+    className = "shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-[11px] font-bold leading-none",
+  ) {
+    const baseClassName = `${getStatusClass(scale)} ${className}`;
+
+    if (canResendScaleNotification(scale)) {
+      return (
+        <button
+          type="button"
+          onClick={() => resendScaleNotification(scale)}
+          className={`${baseClassName} inline-flex items-center justify-center gap-1 transition hover:brightness-95`}
+          title="Reenviar notificação push"
+        >
+          {getStatus(scale)} 🔔
+        </button>
+      );
+    }
+
+    return (
+      <span className={baseClassName}>
+        {getStatus(scale)}
+      </span>
+    );
   }
 
   async function createScale(role: "DCO" | "ASSISTANT", officialId: string) {
@@ -543,7 +480,7 @@ function ScalesPageContent() {
       }
 
       clearForm();
-      await loadScales();
+      await loadScales(currentPage);
 
       showMessage("Escala salva", "Escala salva com sucesso!", "success");
     } catch (error: any) {
@@ -578,7 +515,7 @@ function ScalesPageContent() {
       onConfirm: async () => {
         try {
           await api.patch(`/match-officials/${scale.id}/confirm`);
-          await loadScales();
+          await loadScales(currentPage);
           showMessage(
             "Escala confirmada",
             "Sua confirmação foi registrada com sucesso.",
@@ -618,7 +555,7 @@ function ScalesPageContent() {
       onConfirm: async () => {
         try {
           await api.patch(`/match-officials/${scale.id}/refuse`);
-          await loadScales();
+          await loadScales(currentPage);
           showMessage(
             "Escala recusada",
             "Sua recusa foi registrada com sucesso.",
@@ -628,6 +565,41 @@ function ScalesPageContent() {
           showMessage(
             "Erro ao recusar escala",
             getErrorMessage(error, "Erro ao recusar escala."),
+            "danger",
+          );
+        }
+      },
+    });
+  }
+
+  function canResendScaleNotification(scale?: Scale) {
+    return isAdmin && Boolean(scale) && scale?.confirmed === null;
+  }
+
+  async function resendScaleNotification(scale?: Scale) {
+    if (!scale) return;
+
+    const roleLabel = scale.role === "DCO" ? "DCO" : "Assistente";
+    const officialName = scale.official?.user?.name || "este oficial";
+
+    showConfirm({
+      title: "Reenviar notificação de escala pendente",
+      message: `Deseja enviar novamente uma notificação push para ${officialName} confirmar esta escala como ${roleLabel}?`,
+      variant: "warning",
+      confirmText: "Reenviar notificação",
+      onConfirm: async () => {
+        try {
+          await api.post(`/match-officials/${scale.id}/resend-notification`);
+
+          showMessage(
+            "Notificação reenviada",
+            "A notificação push foi reenviada com sucesso.",
+            "success",
+          );
+        } catch (error: any) {
+          showMessage(
+            "Erro ao reenviar notificação",
+            getErrorMessage(error, "Não foi possível reenviar a notificação."),
             "danger",
           );
         }
@@ -653,7 +625,7 @@ function ScalesPageContent() {
       onConfirm: async () => {
         try {
           await api.delete(`/match-officials/${id}`);
-          await loadScales();
+          await loadScales(currentPage);
           showMessage(
             "Oficial removido",
             "Oficial removido da escala com sucesso.",
@@ -695,7 +667,7 @@ function ScalesPageContent() {
             await api.delete(`/match-officials/${group.assistant.id}`);
           }
 
-          await loadScales();
+          await loadScales(currentPage);
           showMessage("Escala excluída", "Escala removida com sucesso.", "success");
         } catch (error: any) {
           showMessage(
@@ -706,62 +678,6 @@ function ScalesPageContent() {
         }
       },
     });
-  }
-
-  if (initialLoading) {
-    return (
-      <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
-        <Sidebar />
-
-        <div className="flex min-w-0 flex-1 items-center justify-center p-4 lg:p-8">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm lg:p-8">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[var(--cdb-blue-soft)]">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-100 border-t-[var(--cdb-blue)]" />
-            </div>
-
-            <h1 className="mt-5 text-2xl font-black text-[var(--cdb-dark)]">
-              Carregando escalas
-            </h1>
-
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Aguarde enquanto buscamos jogos, oficiais e confirmações de escala.
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (loadingError) {
-    return (
-      <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
-        <Sidebar />
-
-        <div className="flex min-w-0 flex-1 items-center justify-center p-4 lg:p-8">
-          <div className="w-full max-w-lg rounded-3xl border border-red-100 bg-white p-6 text-center shadow-sm lg:p-8">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50 text-3xl">
-              ⚠️
-            </div>
-
-            <h1 className="mt-5 text-2xl font-black text-[var(--cdb-dark)]">
-              Não foi possível carregar
-            </h1>
-
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              {loadingError}
-            </p>
-
-            <button
-              type="button"
-              onClick={loadInitialData}
-              className="mt-5 rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-black text-white transition hover:brightness-95"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        </div>
-      </main>
-    );
   }
 
   return (
@@ -786,7 +702,7 @@ function ScalesPageContent() {
             </div>
 
             <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
-              {groupedScales.length} jogos escalados
+              {pagination.total} jogos escalados
             </div>
           </div>
         </header>
@@ -794,14 +710,14 @@ function ScalesPageContent() {
         <section className="w-full max-w-full overflow-x-hidden p-4 lg:p-8">
           <div
             className={`mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mb-8 ${
-              isAdmin ? "xl:grid-cols-4" : "xl:grid-cols-2"
+              isAdmin ? "xl:grid-cols-3" : "xl:grid-cols-2"
             }`}
           >
             <button
               type="button"
               onClick={() => setScaleStatusFilter("PENDING")}
               className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
-                pendingScales.length > 0
+                pendingScalesCount > 0
                   ? "bg-[var(--cdb-yellow-soft)] border-yellow-200"
                   : "bg-white border-slate-200"
               }`}
@@ -810,7 +726,7 @@ function ScalesPageContent() {
                 <div>
                   <p
                     className={`text-sm font-semibold ${
-                      pendingScales.length > 0
+                      pendingScalesCount > 0
                         ? "text-[#9A7600]"
                         : "text-slate-500"
                     }`}
@@ -820,12 +736,12 @@ function ScalesPageContent() {
 
                   <h2
                     className={`text-3xl lg:text-4xl font-black mt-2 ${
-                      pendingScales.length > 0
+                      pendingScalesCount > 0
                         ? "text-[#9A7600]"
                         : "text-slate-700"
                     }`}
                   >
-                    {pendingScales.length}
+                    {pendingScalesCount}
                   </h2>
 
                   <p className="text-xs text-slate-500 mt-2">
@@ -837,7 +753,7 @@ function ScalesPageContent() {
 
                 <div
                   className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                    pendingScales.length > 0
+                    pendingScalesCount > 0
                       ? "bg-yellow-100 text-[#9A7600]"
                       : "bg-slate-100 text-slate-600"
                   }`}
@@ -852,7 +768,7 @@ function ScalesPageContent() {
                 type="button"
                 onClick={() => setScaleStatusFilter("REFUSED")}
                 className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
-                  refusedScales.length > 0
+                  refusedScalesCount > 0
                     ? "bg-red-50 border-red-200"
                     : "bg-white border-slate-200"
                 }`}
@@ -861,7 +777,7 @@ function ScalesPageContent() {
                   <div>
                     <p
                       className={`text-sm font-semibold ${
-                        refusedScales.length > 0
+                        refusedScalesCount > 0
                           ? "text-red-700"
                           : "text-slate-500"
                       }`}
@@ -871,12 +787,12 @@ function ScalesPageContent() {
 
                     <h2
                       className={`text-3xl lg:text-4xl font-black mt-2 ${
-                        refusedScales.length > 0
+                        refusedScalesCount > 0
                           ? "text-red-700"
                           : "text-slate-700"
                       }`}
                     >
-                      {refusedScales.length}
+                      {refusedScalesCount}
                     </h2>
 
                     <p className="text-xs text-slate-500 mt-2">
@@ -886,7 +802,7 @@ function ScalesPageContent() {
 
                   <div
                     className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                      refusedScales.length > 0
+                      refusedScalesCount > 0
                         ? "bg-red-100 text-red-700"
                         : "bg-slate-100 text-slate-600"
                     }`}
@@ -897,73 +813,30 @@ function ScalesPageContent() {
               </button>
             )}
 
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => setScaleStatusFilter("")}
-                className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md text-left ${
-                  scalesWithoutMissionOrder.length > 0
-                    ? "bg-purple-50 border-purple-200"
-                    : "bg-white border-slate-200"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p
-                      className={`text-sm font-semibold ${
-                        scalesWithoutMissionOrder.length > 0
-                          ? "text-purple-700"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      Sem ordem de missão
-                    </p>
-
-                    <h2
-                      className={`text-3xl lg:text-4xl font-black mt-2 ${
-                        scalesWithoutMissionOrder.length > 0
-                          ? "text-purple-700"
-                          : "text-slate-700"
-                      }`}
-                    >
-                      {scalesWithoutMissionOrder.length}
-                    </h2>
-
-                    <p className="text-xs text-slate-500 mt-2">
-                      Escalas com ordem não anexada
-                    </p>
-                  </div>
-
-                  <div
-                    className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                      scalesWithoutMissionOrder.length > 0
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    📄
-                  </div>
-                </div>
-              </button>
-            )}
-
             <button
               type="button"
-              onClick={() => setScaleStatusFilter("CONFIRMED")}
+              onClick={() => {
+                setCurrentPage(1);
+                setScaleStatusFilter("CONFIRMED");
+              }}
               className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200 transition hover:shadow-md text-left"
             >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-slate-500 text-sm font-semibold">
-                    Escalas confirmadas
+                    {scaleTab === "DONE"
+                      ? "Confirmadas em jogos concluídos"
+                      : "Confirmadas em jogos ativos"}
                   </p>
 
                   <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
-                    {confirmedScales.length}
+                    {confirmedScalesCount}
                   </h2>
 
                   <p className="text-xs text-slate-500 mt-2">
-                    {isAdmin ? "Todas confirmadas" : "Minhas confirmadas"}
+                    {scaleTab === "DONE"
+                      ? "Escalas confirmadas de jogos finalizados"
+                      : "Escalas confirmadas de jogos ainda ativos"}
                   </p>
                 </div>
 
@@ -1040,16 +913,12 @@ function ScalesPageContent() {
                   >
                     <option value="">DCO opcional</option>
 
-                    {dcoOfficials.map((official) => (
+                    {officials.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user.name}
                       </option>
                     ))}
                   </select>
-
-                  <p className="mt-2 text-xs text-slate-500">
-                    Lista somente oficiais com perfil operacional DCO, em ordem alfabética.
-                  </p>
                 </div>
 
                 <div>
@@ -1064,17 +933,12 @@ function ScalesPageContent() {
                   >
                     <option value="">Assistente opcional</option>
 
-                    {assistantOfficialOptions.map((official) => (
+                    {officials.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user.name}
-                        {isDcoOfficial(official) ? ' — DCO' : ''}
                       </option>
                     ))}
                   </select>
-
-                  <p className="mt-2 text-xs text-slate-500">
-                    Lista assistentes primeiro e depois DCOs, ambos em ordem alfabética.
-                  </p>
                 </div>
               </div>
 
@@ -1115,7 +979,10 @@ function ScalesPageContent() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setScaleTab("ACTIVE")}
+                  onClick={() => {
+                    setCurrentPage(1);
+                    setScaleTab("ACTIVE");
+                  }}
                   className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
                     scaleTab === "ACTIVE"
                       ? "bg-[var(--cdb-blue)] text-white shadow-sm"
@@ -1127,7 +994,10 @@ function ScalesPageContent() {
 
                 <button
                   type="button"
-                  onClick={() => setScaleTab("DONE")}
+                  onClick={() => {
+                    setCurrentPage(1);
+                    setScaleTab("DONE");
+                  }}
                   className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
                     scaleTab === "DONE"
                       ? "bg-[var(--cdb-green)] text-white shadow-sm"
@@ -1209,6 +1079,18 @@ function ScalesPageContent() {
               </div>
             </div>
 
+            {listError && (
+              <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                {listError}
+              </div>
+            )}
+
+            {listLoading && (
+              <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-[var(--cdb-blue)]">
+                Atualizando lista de escalas...
+              </div>
+            )}
+
             <div className="space-y-4 lg:hidden">
               {filteredGroups.map((group) => (
                 <div
@@ -1252,13 +1134,7 @@ function ScalesPageContent() {
                           DCO
                         </p>
 
-                        <span
-                          className={`${getStatusClass(
-                            group.dco,
-                          )} shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-[11px] font-bold leading-none`}
-                        >
-                          {getStatus(group.dco)}
-                        </span>
+                        {renderScaleStatus(group.dco)}
                       </div>
 
                       {group.dco ? (
@@ -1282,13 +1158,7 @@ function ScalesPageContent() {
                           Assistente
                         </p>
 
-                        <span
-                          className={`${getStatusClass(
-                            group.assistant,
-                          )} shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-[11px] font-bold leading-none`}
-                        >
-                          {getStatus(group.assistant)}
-                        </span>
+                        {renderScaleStatus(group.assistant)}
                       </div>
 
                       {group.assistant ? (
@@ -1368,7 +1238,7 @@ function ScalesPageContent() {
                     </div>
                   )}
 
-                  {isAdmin && group.match.status !== "CONTROL_DONE" && (
+                  {isAdmin && (
                     <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
                       <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-[var(--cdb-blue)]">
                         Administração
@@ -1460,13 +1330,10 @@ function ScalesPageContent() {
                       </td>
 
                       <td className="py-5 pr-4">
-                        <span
-                          className={`${getStatusClass(
-                            group.dco,
-                          )} inline-flex min-w-[110px] items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold`}
-                        >
-                          {getStatus(group.dco)}
-                        </span>
+                        {renderScaleStatus(
+                          group.dco,
+                          "inline-flex min-w-[110px] items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
+                        )}
                       </td>
 
                       <td className="py-5 pr-4">
@@ -1486,13 +1353,10 @@ function ScalesPageContent() {
                       </td>
 
                       <td className="py-5 pr-4">
-                        <span
-                          className={`${getStatusClass(
-                            group.assistant,
-                          )} inline-flex min-w-[110px] items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold`}
-                        >
-                          {getStatus(group.assistant)}
-                        </span>
+                        {renderScaleStatus(
+                          group.assistant,
+                          "inline-flex min-w-[110px] items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
+                        )}
                       </td>
 
                       <td className="whitespace-nowrap py-5 pr-4 text-sm text-slate-600">
@@ -1556,7 +1420,7 @@ function ScalesPageContent() {
                             </div>
                           )}
 
-                          {isAdmin && group.match.status !== "CONTROL_DONE" && (
+                          {isAdmin && (
                             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3">
                               <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--cdb-blue)]">
                                 Administração
@@ -1606,6 +1470,38 @@ function ScalesPageContent() {
                 <p className="mt-2 text-slate-500">
                   Cadastre uma escala ou ajuste sua busca.
                 </p>
+              </div>
+            )}
+
+            {pagination.total > 0 && (
+              <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-slate-600">
+                  Página {pagination.page} de {pagination.totalPages} · {pagination.total} jogo(s) encontrado(s)
+                </p>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
+                    disabled={!pagination.hasPreviousPage || listLoading}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Anterior
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((page) =>
+                        Math.min(page + 1, pagination.totalPages),
+                      )
+                    }
+                    disabled={!pagination.hasNextPage || listLoading}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Próxima
+                  </button>
+                </div>
               </div>
             )}
           </div>

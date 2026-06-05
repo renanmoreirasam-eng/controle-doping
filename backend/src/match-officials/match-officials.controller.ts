@@ -4,13 +4,18 @@ import {
   Delete,
   Get,
   Param,
+  Query,
+  Req,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
 import { MatchOfficialsService } from './match-officials.service';
 
 @Controller('match-officials')
+@UseGuards(AuthGuard('jwt'))
 export class MatchOfficialsController {
   constructor(
     private readonly matchOfficialsService: MatchOfficialsService,
@@ -38,9 +43,37 @@ export class MatchOfficialsController {
     return this.matchOfficialsService.refuse(id);
   }
 
+  @Post(':id/resend-notification')
+  async resendPendingNotification(@Param('id') id: string, @Req() req: any) {
+    return this.matchOfficialsService.resendPendingNotification(id, req.user);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.matchOfficialsService.remove(id);
+  }
+
+  @Get('groups')
+  async findGroups(
+    @Query('tab') tab?: 'ACTIVE' | 'DONE',
+    @Query('status') status?: 'PENDING' | 'CONFIRMED' | 'REFUSED',
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Req() req?: any,
+  ) {
+    return this.matchOfficialsService.findGroups({
+      tab,
+      status,
+      search,
+      startDate,
+      endDate,
+      page,
+      limit,
+      user: req?.user,
+    });
   }
 
   @Get()
