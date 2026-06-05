@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import EnableNotificationsButton from '@/components/EnableNotificationsButton';
 
@@ -29,82 +29,64 @@ type Match = {
   };
 };
 
-type Scale = {
-  id: string;
-  matchId?: string;
-  officialId: string;
-  confirmed: boolean | null;
+type DashboardSummary = {
+  isAdmin: boolean;
+  pendingScalesCount: number;
+  refusedScalesCount: number;
+  scalesWithoutMissionOrderCount: number;
+  completedMatchesCount: number;
+  recentCompletedMatches: Match[];
+  nextPendingScale?: {
+    id: string;
+    matchId?: string;
+    matchLabel?: string | null;
+    match?: Match;
+  } | null;
+};
 
-  official?: {
-    id?: string;
-    user?: {
-      id?: string;
-      name?: string;
-      email?: string;
-    };
-  };
-
-  match?: Match;
+const emptySummary: DashboardSummary = {
+  isAdmin: false,
+  pendingScalesCount: 0,
+  refusedScalesCount: 0,
+  scalesWithoutMissionOrderCount: 0,
+  completedMatchesCount: 0,
+  recentCompletedMatches: [],
+  nextPendingScale: null,
 };
 
 export default function Dashboard() {
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [scales, setScales] = useState<Scale[]>([]);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [summary, setSummary] = useState<DashboardSummary>(emptySummary);
   const [loading, setLoading] = useState(true);
-
-  const user = getUser();
-
-  const userRole = String(
-    user?.role || user?.user?.role || '',
-  ).toUpperCase();
-
-  const isAdmin = userRole === 'ADMIN';
-
-  const loggedUserId =
-    user?.id ||
-    user?.sub ||
-    user?.userId ||
-    user?.user?.id;
-
-  const loggedUserEmail = user?.email || user?.user?.email;
 
   async function loadDashboardData() {
     try {
       setLoading(true);
 
-      const [matchesResponse, scalesResponse] = await Promise.all([
-        api.get('/matches'),
-        api.get('/match-officials'),
-      ]);
+      const response = await api.get('/dashboard/summary');
 
-      setMatches(matchesResponse.data || []);
-      setScales(scalesResponse.data || []);
+      setSummary(response.data || emptySummary);
+      setIsAdmin(Boolean(response.data?.isAdmin));
     } catch (error) {
-      setMatches([]);
-      setScales([]);
+      console.error('Erro ao carregar dashboard:', error);
+      setSummary(emptySummary);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    const user = getUser();
+    const userRole = String(
+      user?.role || user?.user?.role || '',
+    ).toUpperCase();
+
+    setIsAdmin(userRole === 'ADMIN');
+    setHasHydrated(true);
+
     loadDashboardData();
   }, []);
-
-  function isOwnScale(scale: Scale) {
-    return (
-      scale.official?.user?.id === loggedUserId ||
-      scale.official?.user?.email === loggedUserEmail
-    );
-  }
-
-  function hasMissionOrder(match?: Match | null) {
-    return Boolean(
-      match?.missionOrderFileData ||
-        match?.missionOrderFileName ||
-        match?.missionOrderFileType,
-    );
-  }
 
   function getStatusLabel(status: string) {
     if (status === 'SCHEDULED') return 'Agendado';
@@ -140,88 +122,27 @@ export default function Dashboard() {
     return 'bg-slate-100 text-slate-700 border border-slate-200';
   }
 
-  const visibleScales = useMemo(() => {
-    if (isAdmin) return scales;
+  if (!hasHydrated) {
+    return (
+      <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
+        <Sidebar />
 
-    return scales.filter((scale) => isOwnScale(scale));
-  }, [isAdmin, scales, loggedUserId, loggedUserEmail]);
-
-  const userMatchIds = useMemo(() => {
-    return new Set(
-      scales
-        .filter((scale) => isOwnScale(scale))
-        .map((scale) => scale.match?.id || scale.matchId)
-        .filter(Boolean) as string[],
+        <div className="flex-1 p-4 lg:p-8">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm">
+            Carregando dashboard...
+          </div>
+        </div>
+      </main>
     );
-  }, [scales, loggedUserId, loggedUserEmail]);
+  }
 
-  const pendingScales = useMemo(() => {
-    return visibleScales.filter(
-      (scale) =>
-        scale.confirmed === null ||
-        scale.confirmed === undefined,
-    );
-  }, [visibleScales]);
-
-  const refusedScales = useMemo(() => {
-    return scales.filter((scale) => scale.confirmed === false);
-  }, [scales]);
-
-  const scalesWithoutMissionOrder = useMemo(() => {
-    const uniqueMatches = new Map<string, Match>();
-
-    for (const scale of scales) {
-      const match = scale.match;
-
-      if (!match?.id) continue;
-      if (match.status === 'CONTROL_DONE') continue;
-      if (match.status === 'CANCELED') continue;
-      if (hasMissionOrder(match)) continue;
-
-      uniqueMatches.set(match.id, match);
-    }
-
-    return Array.from(uniqueMatches.values());
-  }, [scales]);
-
-  const completedMatches = useMemo(() => {
-    const finishedMatches = matches.filter(
-      (match) => match.status === 'CONTROL_DONE',
-    );
-
-    if (isAdmin) {
-      return finishedMatches;
-    }
-
-    return finishedMatches.filter((match) => userMatchIds.has(match.id));
-  }, [matches, isAdmin, userMatchIds]);
-
-  const recentCompletedMatches = useMemo(() => {
-    return completedMatches
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(b.matchDate).getTime() -
-          new Date(a.matchDate).getTime(),
-      )
-      .slice(0, 5);
-  }, [completedMatches]);
-
-  const nextPendingScale = useMemo(() => {
-    return pendingScales
-      .slice()
-      .sort((a, b) => {
-        const dateA = a.match?.matchDate
-          ? new Date(a.match.matchDate).getTime()
-          : 0;
-
-        const dateB = b.match?.matchDate
-          ? new Date(b.match.matchDate).getTime()
-          : 0;
-
-        return dateA - dateB;
-      })[0];
-  }, [pendingScales]);
+  const pendingScalesCount = summary.pendingScalesCount || 0;
+  const refusedScalesCount = summary.refusedScalesCount || 0;
+  const scalesWithoutMissionOrderCount =
+    summary.scalesWithoutMissionOrderCount || 0;
+  const completedMatchesCount = summary.completedMatchesCount || 0;
+  const recentCompletedMatches = summary.recentCompletedMatches || [];
+  const nextPendingScale = summary.nextPendingScale;
 
   return (
     <main className="min-h-screen bg-[var(--cdb-light)] flex flex-col lg:flex-row">
@@ -257,7 +178,7 @@ export default function Dashboard() {
             <Link
               href="/dashboard/scales?status=PENDING"
               className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
-                pendingScales.length > 0
+                pendingScalesCount > 0
                   ? 'bg-[var(--cdb-yellow-soft)] border-yellow-200'
                   : 'bg-white border-slate-200'
               }`}
@@ -266,7 +187,7 @@ export default function Dashboard() {
                 <div>
                   <p
                     className={`text-sm font-semibold ${
-                      pendingScales.length > 0
+                      pendingScalesCount > 0
                         ? 'text-[#9A7600]'
                         : 'text-slate-500'
                     }`}
@@ -276,12 +197,12 @@ export default function Dashboard() {
 
                   <h2
                     className={`text-3xl lg:text-4xl font-black mt-2 ${
-                      pendingScales.length > 0
+                      pendingScalesCount > 0
                         ? 'text-[#9A7600]'
                         : 'text-slate-700'
                     }`}
                   >
-                    {loading ? '-' : pendingScales.length}
+                    {loading ? '-' : pendingScalesCount}
                   </h2>
 
                   <p className="text-xs text-slate-500 mt-2">
@@ -293,7 +214,7 @@ export default function Dashboard() {
 
                 <div
                   className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                    pendingScales.length > 0
+                    pendingScalesCount > 0
                       ? 'bg-yellow-100 text-[#9A7600]'
                       : 'bg-slate-100 text-slate-600'
                   }`}
@@ -307,7 +228,7 @@ export default function Dashboard() {
               <Link
                 href="/dashboard/scales?status=REFUSED"
                 className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
-                  refusedScales.length > 0
+                  refusedScalesCount > 0
                     ? 'bg-red-50 border-red-200'
                     : 'bg-white border-slate-200'
                 }`}
@@ -316,7 +237,7 @@ export default function Dashboard() {
                   <div>
                     <p
                       className={`text-sm font-semibold ${
-                        refusedScales.length > 0
+                        refusedScalesCount > 0
                           ? 'text-red-700'
                           : 'text-slate-500'
                       }`}
@@ -326,12 +247,12 @@ export default function Dashboard() {
 
                     <h2
                       className={`text-3xl lg:text-4xl font-black mt-2 ${
-                        refusedScales.length > 0
+                        refusedScalesCount > 0
                           ? 'text-red-700'
                           : 'text-slate-700'
                       }`}
                     >
-                      {loading ? '-' : refusedScales.length}
+                      {loading ? '-' : refusedScalesCount}
                     </h2>
 
                     <p className="text-xs text-slate-500 mt-2">
@@ -341,7 +262,7 @@ export default function Dashboard() {
 
                   <div
                     className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                      refusedScales.length > 0
+                      refusedScalesCount > 0
                         ? 'bg-red-100 text-red-700'
                         : 'bg-slate-100 text-slate-600'
                     }`}
@@ -356,7 +277,7 @@ export default function Dashboard() {
               <Link
                 href="/dashboard/scales"
                 className={`rounded-3xl p-5 lg:p-6 shadow-sm border transition hover:shadow-md ${
-                  scalesWithoutMissionOrder.length > 0
+                  scalesWithoutMissionOrderCount > 0
                     ? 'bg-purple-50 border-purple-200'
                     : 'bg-white border-slate-200'
                 }`}
@@ -365,7 +286,7 @@ export default function Dashboard() {
                   <div>
                     <p
                       className={`text-sm font-semibold ${
-                        scalesWithoutMissionOrder.length > 0
+                        scalesWithoutMissionOrderCount > 0
                           ? 'text-purple-700'
                           : 'text-slate-500'
                       }`}
@@ -375,12 +296,12 @@ export default function Dashboard() {
 
                     <h2
                       className={`text-3xl lg:text-4xl font-black mt-2 ${
-                        scalesWithoutMissionOrder.length > 0
+                        scalesWithoutMissionOrderCount > 0
                           ? 'text-purple-700'
                           : 'text-slate-700'
                       }`}
                     >
-                      {loading ? '-' : scalesWithoutMissionOrder.length}
+                      {loading ? '-' : scalesWithoutMissionOrderCount}
                     </h2>
 
                     <p className="text-xs text-slate-500 mt-2">
@@ -390,7 +311,7 @@ export default function Dashboard() {
 
                   <div
                     className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                      scalesWithoutMissionOrder.length > 0
+                      scalesWithoutMissionOrderCount > 0
                         ? 'bg-purple-100 text-purple-700'
                         : 'bg-slate-100 text-slate-600'
                     }`}
@@ -402,7 +323,7 @@ export default function Dashboard() {
             )}
 
             <Link
-              href="/dashboard/matches"
+              href="/dashboard/matches?status=CONTROL_DONE"
               className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200 transition hover:shadow-md"
             >
               <div className="flex items-center justify-between gap-4">
@@ -412,7 +333,7 @@ export default function Dashboard() {
                   </p>
 
                   <h2 className="text-3xl lg:text-4xl font-black mt-2 text-[var(--cdb-green)]">
-                    {loading ? '-' : completedMatches.length}
+                    {loading ? '-' : completedMatchesCount}
                   </h2>
 
                   <p className="text-xs text-slate-500 mt-2">
@@ -427,7 +348,7 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {pendingScales.length > 0 && (
+          {pendingScalesCount > 0 && (
             <Link
               href="/dashboard/scales?status=PENDING"
               className="block mb-8 bg-[var(--cdb-yellow-soft)] border border-yellow-200 rounded-3xl p-5 lg:p-6 hover:bg-yellow-100 transition"
@@ -440,8 +361,8 @@ export default function Dashboard() {
 
                   <h2 className="text-xl lg:text-2xl font-black text-[var(--cdb-dark)] mt-2">
                     {isAdmin
-                      ? `Existem ${pendingScales.length} escala(s) pendente(s) de confirmação`
-                      : `Você possui ${pendingScales.length} escala(s) pendente(s) de confirmação`}
+                      ? `Existem ${pendingScalesCount} escala(s) pendente(s) de confirmação`
+                      : `Você possui ${pendingScalesCount} escala(s) pendente(s) de confirmação`}
                   </h2>
 
                   {nextPendingScale?.match && (
@@ -475,7 +396,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="bg-[var(--cdb-green-soft)] text-[var(--cdb-green)] px-4 py-2 rounded-2xl text-sm font-black w-fit">
-                  {completedMatches.length} realizado(s)
+                  {completedMatchesCount} realizado(s)
                 </div>
               </div>
 
@@ -556,12 +477,12 @@ export default function Dashboard() {
 
                     <strong
                       className={
-                        pendingScales.length > 0
+                        pendingScalesCount > 0
                           ? 'text-[#9A7600]'
                           : 'text-slate-700'
                       }
                     >
-                      {pendingScales.length}
+                      {pendingScalesCount}
                     </strong>
                   </div>
 
@@ -573,12 +494,12 @@ export default function Dashboard() {
 
                       <strong
                         className={
-                          refusedScales.length > 0
+                          refusedScalesCount > 0
                             ? 'text-red-700'
                             : 'text-slate-700'
                         }
                       >
-                        {refusedScales.length}
+                        {refusedScalesCount}
                       </strong>
                     </div>
                   )}
@@ -591,12 +512,12 @@ export default function Dashboard() {
 
                       <strong
                         className={
-                          scalesWithoutMissionOrder.length > 0
+                          scalesWithoutMissionOrderCount > 0
                             ? 'text-purple-700'
                             : 'text-slate-700'
                         }
                       >
-                        {scalesWithoutMissionOrder.length}
+                        {scalesWithoutMissionOrderCount}
                       </strong>
                     </div>
                   )}
@@ -607,7 +528,7 @@ export default function Dashboard() {
                     </span>
 
                     <strong className="text-[var(--cdb-green)]">
-                      {completedMatches.length}
+                      {completedMatchesCount}
                     </strong>
                   </div>
                 </div>

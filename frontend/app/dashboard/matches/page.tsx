@@ -353,6 +353,16 @@ export default function MatchesPage() {
     loadTeams();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const statusFilter = params.get('status');
+
+    if (statusFilter === 'CONTROL_DONE') {
+      setActiveTab('DONE');
+      setCardFilter('COMPLETED');
+    }
+  }, []);
+
   function hasMissionOrder(match: Match) {
     return Boolean(
       match.missionOrderFileData ||
