@@ -28,6 +28,9 @@ model User {
   announcementAcknowledgements AnnouncementAcknowledgement[]
 
   adminTasksCreated AdminTask[] @relation("AdminTaskCreator")
+
+  @@index([role])
+  @@index([createdAt])
 }
 
 model Official {
@@ -59,6 +62,10 @@ model Official {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([operationalRole])
+  @@index([createdAt])
 }
 
 model Championship {
@@ -70,6 +77,8 @@ model Championship {
   updatedAt DateTime @updatedAt
 
   matches Match[]
+
+  @@index([name])
 }
 
 model Stadium {
@@ -84,6 +93,10 @@ model Stadium {
   updatedAt DateTime @updatedAt
 
   matches Match[]
+
+  @@index([city])
+  @@index([state])
+  @@index([city, state])
 }
 
 model Team {
@@ -99,6 +112,9 @@ model Team {
   updatedAt DateTime @updatedAt
 
   @@unique([name, state])
+  @@index([isActive])
+  @@index([city])
+  @@index([state])
 }
 
 model Match {
@@ -144,6 +160,14 @@ model Match {
 
   kits         MatchKit[]
   kitMovements KitMovement[]
+
+  @@index([status])
+  @@index([matchDate])
+  @@index([status, matchDate])
+  @@index([championshipId])
+  @@index([stadiumId])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 enum KitStatus {
@@ -179,6 +203,12 @@ model Kit {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentOfficialId])
+  @@index([status, currentOfficialId])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model MatchKit {
@@ -197,6 +227,12 @@ model MatchKit {
   usedAt    DateTime?
 
   @@unique([matchId, kitId])
+  @@index([matchId])
+  @@index([kitId])
+  @@index([officialId])
+  @@index([matchId, officialId])
+  @@index([usedAt])
+  @@index([createdAt])
 }
 
 model KitMovement {
@@ -223,6 +259,14 @@ model KitMovement {
   notes String?
 
   createdAt DateTime @default(now())
+
+  @@index([kitId])
+  @@index([type])
+  @@index([matchId])
+  @@index([fromOfficialId])
+  @@index([toOfficialId])
+  @@index([createdAt])
+  @@index([kitId, createdAt])
 }
 
 model MatchOfficial {
@@ -239,6 +283,13 @@ model MatchOfficial {
   confirmed Boolean?
 
   createdAt DateTime @default(now())
+
+  @@index([matchId])
+  @@index([officialId])
+  @@index([confirmed])
+  @@index([matchId, role])
+  @@index([officialId, confirmed])
+  @@index([createdAt])
 }
 
 enum UserRole {
@@ -270,6 +321,9 @@ model Draw {
   updatedAt DateTime @updatedAt
 
   players DrawPlayer[]
+
+  @@index([matchId])
+  @@index([createdAt])
 }
 
 model DrawPlayer {
@@ -285,6 +339,10 @@ model DrawPlayer {
   type     DrawPlayerType
 
   createdAt DateTime @default(now())
+
+  @@index([drawId])
+  @@index([type])
+  @@index([team])
 }
 
 enum DrawPlayerType {
@@ -309,6 +367,9 @@ model Substitution {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([matchId])
+  @@index([createdAt])
 }
 
 model RoomInspection {
@@ -325,6 +386,10 @@ model RoomInspection {
 
   items  RoomInspectionItem[]
   photos RoomInspectionPhoto[]
+
+  @@index([matchId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model RoomInspectionItem {
@@ -336,6 +401,9 @@ model RoomInspectionItem {
   label  String
   status String
   notes  String?
+
+  @@index([inspectionId])
+  @@index([status])
 }
 
 model RoomInspectionPhoto {
@@ -348,6 +416,9 @@ model RoomInspectionPhoto {
   dataUrl  String @db.Text
 
   createdAt DateTime @default(now())
+
+  @@index([inspectionId])
+  @@index([createdAt])
 }
 
 model MatchOperationalLog {
@@ -367,6 +438,11 @@ model MatchOperationalLog {
   comment   String? @db.Text
 
   createdAt DateTime @default(now())
+
+  @@index([matchId])
+  @@index([step])
+  @@index([createdAt])
+  @@index([matchId, step])
 }
 
 enum OperationalStep {
@@ -390,6 +466,9 @@ model PushSubscription {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Announcement {
@@ -409,6 +488,10 @@ model Announcement {
   updatedAt DateTime @updatedAt
 
   acknowledgements AnnouncementAcknowledgement[]
+
+  @@index([active])
+  @@index([targetRole])
+  @@index([createdAt])
 }
 
 model AnnouncementAcknowledgement {
@@ -423,6 +506,8 @@ model AnnouncementAcknowledgement {
   acknowledgedAt DateTime @default(now())
 
   @@unique([announcementId, userId])
+  @@index([userId])
+  @@index([acknowledgedAt])
 }
 
 enum AnnouncementTargetRole {
@@ -453,4 +538,6 @@ model AdminTask {
 
   @@index([dueDate])
   @@index([done])
+  @@index([done, dueDate])
+  @@index([createdByUserId])
 }
