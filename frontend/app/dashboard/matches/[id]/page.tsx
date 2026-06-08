@@ -1263,9 +1263,9 @@ export default function MatchDetailsPage() {
 
   async function handleUploadMatchDocument(
     type: 'athleteList' | 'finalDocument',
-    files: FileList | null,
+    selectedFile: File | FileList | null,
   ) {
-    const file = files?.[0];
+    const file = selectedFile instanceof File ? selectedFile : selectedFile?.[0];
 
     if (!file) return;
 
@@ -1290,7 +1290,7 @@ export default function MatchDetailsPage() {
 
       const fileData = await readFileAsDataUrl(file);
 
-      await api.patch(`/matches/${matchId}/documents`,
+      const response = await api.patch(`/matches/${matchId}/documents`,
         type === 'athleteList'
           ? {
               athleteListFileName: file.name,
@@ -1304,13 +1304,31 @@ export default function MatchDetailsPage() {
             },
       );
 
+      if (response.data) {
+        setMatch(response.data);
+      }
+
+      if (type === 'finalDocument') {
+        setModal({
+          open: true,
+          title: 'Documento salvo',
+          message: 'Documento final do jogo salvo com sucesso. Atualize a página para visualizar o arquivo enviado.',
+          variant: 'success',
+          confirmText: 'Atualizar página',
+          onConfirm: () => {
+            closeModal();
+            window.location.reload();
+          },
+        });
+
+        return;
+      }
+
       await loadMatch();
 
       showMessage(
         'Documento salvo',
-        type === 'athleteList'
-          ? 'Relação de atletas salva com sucesso!'
-          : 'Documento final do jogo salvo com sucesso!',
+        'Relação de atletas salva com sucesso!',
         'success',
       );
     } catch (error: any) {
@@ -3346,11 +3364,14 @@ function formatTimeOnly(date: string) {
                         accept=".pdf,.jpg,.jpeg,.png"
                         disabled={savingFinalDocumentFile || isAnyActionLoading}
                         onChange={(event) => {
-                          const files = event.currentTarget.files;
-                          runExclusiveAction('final-document-upload', () =>
-                            handleUploadMatchDocument('finalDocument', files),
-                          );
+                          const file = event.currentTarget.files?.[0] || null;
                           event.currentTarget.value = '';
+
+                          if (!file) return;
+
+                          runExclusiveAction('final-document-upload', () =>
+                            handleUploadMatchDocument('finalDocument', file),
+                          );
                         }}
                         className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
                       />
