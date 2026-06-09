@@ -116,25 +116,33 @@ export class MatchesService {
     }
   }
 
-
-  private async notifyMissionOrderAvailableToCoordinators(match: {
+  private async notifyMissionOrderAvailableToDco(match: {
     id: string;
     homeTeam: string;
     awayTeam: string;
   }) {
-    const coordinators = await this.prisma.user.findMany({
+    const dcoScales = await this.prisma.matchOfficial.findMany({
       where: {
-        role: 'COORDINATOR',
+        matchId: match.id,
+        role: 'DCO',
       },
-      select: {
-        id: true,
+      include: {
+        official: {
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
       },
     });
 
     const userIds = Array.from(
       new Set(
-        coordinators
-          .map((coordinator) => coordinator.id)
+        dcoScales
+          .map((scale) => scale.official?.user?.id)
           .filter((userId): userId is string => Boolean(userId)),
       ),
     );
@@ -219,14 +227,12 @@ export class MatchesService {
       Boolean(data.missionOrderFileData);
 
     if (hasMissionOrder) {
-      await this.notifyMissionOrderAvailableToCoordinators(created).catch(
-        (error) => {
-          console.error(
-            'Erro ao enviar notificação de ordem de missão:',
-            error,
-          );
-        },
-      );
+      await this.notifyMissionOrderAvailableToDco(created).catch((error) => {
+        console.error(
+          'Erro ao enviar notificação de ordem de missão:',
+          error,
+        );
+      });
     }
 
     return created;
@@ -322,14 +328,12 @@ export class MatchesService {
     });
 
     if (shouldNotifyMissionOrder) {
-      await this.notifyMissionOrderAvailableToCoordinators(updated).catch(
-        (error) => {
-          console.error(
-            'Erro ao enviar notificação de ordem de missão:',
-            error,
-          );
-        },
-      );
+      await this.notifyMissionOrderAvailableToDco(updated).catch((error) => {
+        console.error(
+          'Erro ao enviar notificação de ordem de missão:',
+          error,
+        );
+      });
     }
 
     return updated;
