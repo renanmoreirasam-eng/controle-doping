@@ -541,3 +541,38 @@ model AdminTask {
   @@index([done, dueDate])
   @@index([createdByUserId])
 }
+
+model PushNotificationLog {
+  id String @id @default(cuid())
+
+  userId    String?
+  userName  String?
+  userEmail String?
+  userRole  String?
+
+  title   String
+  message String @db.Text
+  url     String?
+
+  module     String?
+  entityId   String?
+  entityType String?
+
+  status String @default("SENT")
+  error  String? @db.Text
+
+  subscriptionCount Int @default(0)
+  sentCount         Int @default(0)
+  failedCount       Int @default(0)
+
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userEmail])
+  @@index([userRole])
+  @@index([status])
+  @@index([module])
+  @@index([sentAt])
+  @@index([createdAt])
+}

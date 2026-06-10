@@ -79,6 +79,12 @@ const allMenus = [
     icon: '⚽',
     roles: ['ADMIN', 'COORDINATOR'],
   },
+  {
+    name: 'Notificações Push',
+    href: '/dashboard/push-logs',
+    icon: '🔔',
+    roles: ['ADMIN'],
+  },
 ];
 
 function DeveloperSignature() {
