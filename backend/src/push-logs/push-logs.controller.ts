@@ -28,5 +28,19 @@ export class PushLogsController {
   ) {
     return this.pushLogsService.findAll(query);
   }
-}
 
+  @Get('subscriptions')
+  @Roles('ADMIN')
+  async findSubscriptionUsers(
+    @Query()
+    query: {
+      search?: string;
+      userRole?: string;
+      status?: 'ALL' | 'ENABLED' | 'DISABLED';
+      page?: string;
+      limit?: string;
+    },
+  ) {
+    return this.pushLogsService.findSubscriptionUsers(query);
+  }
+}
