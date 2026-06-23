@@ -27,8 +27,10 @@ model User {
 
   announcementAcknowledgements AnnouncementAcknowledgement[]
 
-  adminTasksCreated AdminTask[] @relation("AdminTaskCreator")
+  passwordResetTokens PasswordResetToken[]
 
+  adminTasksCreated AdminTask[] @relation("AdminTaskCreator")
+  
   @@index([role])
   @@index([createdAt])
 }
@@ -575,4 +577,21 @@ model PushNotificationLog {
   @@index([module])
   @@index([sentAt])
   @@index([createdAt])
+}
+
+model PasswordResetToken {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@index([usedAt])
 }

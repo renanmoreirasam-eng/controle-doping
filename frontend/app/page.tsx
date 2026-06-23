@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -215,9 +216,18 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-sm font-bold text-slate-700 block mb-2">
-                Senha
-              </label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="text-sm font-bold text-slate-700 block">
+                  Senha
+                </label>
+
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-black text-[var(--cdb-blue)] transition hover:underline"
+                >
+                  Esqueci minha senha
+                </Link>
+              </div>
 
               <input
                 type="password"
