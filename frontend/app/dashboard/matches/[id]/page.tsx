@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { jsPDF } from 'jspdf';
 import { useParams } from 'next/navigation';
 import { Sidebar } from '../../../../components/Sidebar';
 import { ConfirmModal } from '../../../../components/ConfirmModal';
@@ -29,10 +30,16 @@ type Match = {
   finalDocumentFileData?: string | null;
 };
 
-type PendingAthleteListFile = {
+type PendingAthleteListImageFile = {
+  id: string;
   fileName: string;
   fileType: string;
   dataUrl: string;
+};
+
+type PendingAthleteListFiles = {
+  HOME: PendingAthleteListImageFile[];
+  AWAY: PendingAthleteListImageFile[];
 };
 
 type Scale = {
@@ -367,8 +374,11 @@ export default function MatchDetailsPage() {
 
   const [missionCodeInput, setMissionCodeInput] = useState('');
   const [missionCodeConfirmed, setMissionCodeConfirmed] = useState(false);
-  const [pendingAthleteListFile, setPendingAthleteListFile] =
-    useState<PendingAthleteListFile | null>(null);
+  const [pendingAthleteListFiles, setPendingAthleteListFiles] =
+    useState<PendingAthleteListFiles>({
+      HOME: [],
+      AWAY: [],
+    });
   const [savingMissionCode, setSavingMissionCode] = useState(false);
   const [savingAthleteListFile, setSavingAthleteListFile] = useState(false);
   const [savingFinalDocumentFile, setSavingFinalDocumentFile] = useState(false);
@@ -1190,70 +1200,238 @@ export default function MatchDetailsPage() {
     }
   }
 
-  async function handleSelectAthleteListFile(files: FileList | null) {
-    const file = files?.[0];
+  function getPendingAthleteListFileCount(files = pendingAthleteListFiles) {
+    return files.HOME.length + files.AWAY.length;
+  }
 
-    if (!file) return;
+  function getImageFormat(fileType: string) {
+    return fileType.includes('png') ? 'PNG' : 'JPEG';
+  }
+
+  function getImageDimensions(dataUrl: string): Promise<{
+    width: number;
+    height: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+
+      image.onload = () => {
+        resolve({
+          width: image.naturalWidth || image.width,
+          height: image.naturalHeight || image.height,
+        });
+      };
+
+      image.onerror = () => reject(new Error('Não foi possível carregar uma das imagens selecionadas.'));
+      image.src = dataUrl;
+    });
+  }
+
+  async function generateAthleteListPdfDataUrl(files: PendingAthleteListFiles) {
+    if (!match) {
+      throw new Error('Jogo não carregado.');
+    }
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 14;
+    const contentWidth = pageWidth - margin * 2;
+    const contentHeight = pageHeight - margin * 2;
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.text('Relação de atletas', margin, 24);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(11);
+    pdf.text(`Jogo: ${match.homeTeam} x ${match.awayTeam}`, margin, 38);
+    pdf.text(`Campeonato: ${match.championship.name}`, margin, 46);
+    pdf.text(`Data: ${formatDateOnly(match.matchDate)} às ${formatTimeOnly(match.matchDate)}`, margin, 54);
+    pdf.text(`Estádio: ${match.stadium.name} - ${match.stadium.city}/${match.stadium.state}`, margin, 62);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Mandante: ${match.homeTeam} (${files.HOME.length} arquivo(s))`, margin, 82);
+    pdf.text(`Visitante: ${match.awayTeam} (${files.AWAY.length} arquivo(s))`, margin, 90);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, pageHeight - 18);
+
+    const addImagePage = async (
+      teamLabel: string,
+      file: PendingAthleteListImageFile,
+      index: number,
+    ) => {
+      pdf.addPage();
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.text(`${teamLabel} - arquivo ${index + 1}`, margin, 14);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.text(file.fileName, margin, 20);
+
+      const dimensions = await getImageDimensions(file.dataUrl);
+      const availableHeight = contentHeight - 14;
+      const scale = Math.min(
+        contentWidth / dimensions.width,
+        availableHeight / dimensions.height,
+      );
+
+      const imageWidth = dimensions.width * scale;
+      const imageHeight = dimensions.height * scale;
+      const x = margin + (contentWidth - imageWidth) / 2;
+      const y = 26;
+
+      pdf.addImage(
+        file.dataUrl,
+        getImageFormat(file.fileType),
+        x,
+        y,
+        imageWidth,
+        imageHeight,
+      );
+    };
+
+    for (let index = 0; index < files.HOME.length; index += 1) {
+      await addImagePage(`Mandante - ${match.homeTeam}`, files.HOME[index], index);
+    }
+
+    for (let index = 0; index < files.AWAY.length; index += 1) {
+      await addImagePage(`Visitante - ${match.awayTeam}`, files.AWAY[index], index);
+    }
+
+    return pdf.output('datauristring');
+  }
+
+  async function handleSelectAthleteListFiles(
+    team: 'HOME' | 'AWAY',
+    files: FileList | null,
+  ) {
+    if (!files) return;
+
+    const selectedFiles = Array.from(files);
+
+    if (selectedFiles.length === 0) return;
 
     const maxSizeInMb = 10;
     const maxSizeInBytes = maxSizeInMb * 1024 * 1024;
+    const invalidTypeFile = selectedFiles.find(
+      (file) => !['image/jpeg', 'image/jpg', 'image/png'].includes(file.type),
+    );
 
-    if (file.size > maxSizeInBytes) {
+    if (invalidTypeFile) {
+      showMessage(
+        'Formato inválido',
+        'Selecione somente imagens JPG, JPEG ou PNG.',
+        'warning',
+      );
+      return;
+    }
+
+    const oversizedFile = selectedFiles.find((file) => file.size > maxSizeInBytes);
+
+    if (oversizedFile) {
       showMessage(
         'Arquivo muito grande',
-        `Selecione um arquivo de até ${maxSizeInMb} MB.`,
+        `Cada imagem deve ter até ${maxSizeInMb} MB.`,
         'warning',
       );
       return;
     }
 
     try {
-      const fileData = await readFileAsDataUrl(file);
+      const preparedFiles = await Promise.all(
+        selectedFiles.map(async (file) => ({
+          id: `${team}-${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+          fileName: file.name,
+          fileType: file.type || 'image/jpeg',
+          dataUrl: await readFileAsDataUrl(file),
+        })),
+      );
 
-      setPendingAthleteListFile({
-        fileName: file.name,
-        fileType: file.type || 'application/octet-stream',
-        dataUrl: fileData,
-      });
+      setPendingAthleteListFiles((current) => ({
+        ...current,
+        [team]: [...current[team], ...preparedFiles],
+      }));
     } catch (error: any) {
       showMessage(
-        'Erro ao preparar arquivo',
-        getErrorMessage(error, 'Erro ao preparar pré-visualização do arquivo.'),
+        'Erro ao preparar imagens',
+        getErrorMessage(error, 'Erro ao preparar pré-visualização das imagens.'),
         'danger',
       );
     }
   }
 
+  function removePendingAthleteListFile(team: 'HOME' | 'AWAY', fileId: string) {
+    if (savingAthleteListFile || isAnyActionLoading) return;
+
+    setPendingAthleteListFiles((current) => ({
+      ...current,
+      [team]: current[team].filter((file) => file.id !== fileId),
+    }));
+  }
+
   function cancelAthleteListPreview() {
     if (savingAthleteListFile || isAnyActionLoading) return;
-    setPendingAthleteListFile(null);
+
+    setPendingAthleteListFiles({
+      HOME: [],
+      AWAY: [],
+    });
   }
 
   async function confirmAthleteListUpload() {
-    if (!pendingAthleteListFile) return;
+    if (getPendingAthleteListFileCount() === 0) {
+      showMessage(
+        'Nenhuma imagem selecionada',
+        'Selecione pelo menos uma imagem do mandante ou do visitante para gerar a relação de atletas.',
+        'warning',
+      );
+      return;
+    }
 
     try {
       setSavingAthleteListFile(true);
 
+      const pdfDataUrl = await generateAthleteListPdfDataUrl(pendingAthleteListFiles);
+      const fileName = `relacao-atletas-${match?.homeTeam || 'mandante'}-x-${match?.awayTeam || 'visitante'}`
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'relacao-atletas';
+
       await api.patch(`/matches/${matchId}/documents`, {
-        athleteListFileName: pendingAthleteListFile.fileName,
-        athleteListFileType: pendingAthleteListFile.fileType,
-        athleteListFileData: pendingAthleteListFile.dataUrl,
+        athleteListFileName: `${fileName}.pdf`,
+        athleteListFileType: 'application/pdf',
+        athleteListFileData: pdfDataUrl,
       });
 
-      setPendingAthleteListFile(null);
+      setPendingAthleteListFiles({
+        HOME: [],
+        AWAY: [],
+      });
 
       await loadMatch();
+      await refreshOperationData({ silent: true });
 
       showMessage(
         'Relação salva',
-        'Relação de atletas salva com sucesso!',
+        'Relação de atletas gerada em PDF e salva com sucesso!',
         'success',
       );
     } catch (error: any) {
       showMessage(
         'Erro ao salvar relação',
-        getErrorMessage(error, 'Erro ao salvar relação de atletas.'),
+        getErrorMessage(error, 'Erro ao gerar e salvar a relação de atletas.'),
         'danger',
       );
     } finally {
@@ -2320,7 +2498,7 @@ function formatTimeOnly(date: string) {
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
-                        Envie uma foto ou PDF da relação de atletas antes do sorteio.
+                        Envie uma ou mais imagens da relação de atletas do mandante e/ou visitante antes do sorteio.
                       </p>
                     </div>
 
@@ -2364,76 +2542,101 @@ function formatTimeOnly(date: string) {
 
                   {canUploadAthleteListFile && !match.athleteListFileName ? (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                      {!pendingAthleteListFile ? (
-                        <>
-                          <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                            Relação de atletas
-                          </label>
-
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            disabled={
-                              savingAthleteListFile ||
-                              isAnyActionLoading
-                            }
-                            onChange={(event) => {
-                              handleSelectAthleteListFile(
-                                event.currentTarget.files,
-                              );
-                              event.currentTarget.value = '';
-                            }}
-                            className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                          />
-
-                          <p className="mt-2 text-xs text-slate-500">
-                            Selecione o arquivo para pré-visualizar antes de confirmar. Formatos aceitos: PDF, JPG ou PNG. Tamanho máximo: 10 MB.
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                          <p className="text-sm font-bold text-[var(--cdb-blue)]">
+                            Envie imagens separadas por equipe
                           </p>
-                        </>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                                Pré-visualização da relação
-                              </p>
 
-                              <p className="mt-1 text-sm font-black text-slate-900">
-                                {pendingAthleteListFile.fileName}
-                              </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            Selecione uma ou mais fotos JPG, JPEG ou PNG do mandante e/ou visitante. Ao confirmar, o sistema vai gerar um único PDF e salvar no campo atual da relação de atletas.
+                          </p>
+                        </div>
+
+                        {([
+                          { team: 'HOME' as const, title: 'Time mandante', name: match.homeTeam },
+                          { team: 'AWAY' as const, title: 'Time visitante', name: match.awayTeam },
+                        ]).map((group) => (
+                          <div
+                            key={group.team}
+                            className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                          >
+                            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                                  {group.title}
+                                </p>
+
+                                <p className="mt-1 text-base font-black text-[var(--cdb-dark)]">
+                                  {group.name}
+                                </p>
+                              </div>
+
+                              <span className="w-fit rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600">
+                                {pendingAthleteListFiles[group.team].length} imagem(ns)
+                              </span>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                downloadDataUrl(
-                                  pendingAthleteListFile.dataUrl,
-                                  pendingAthleteListFile.fileName,
-                                )
+                            <input
+                              type="file"
+                              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                              multiple
+                              disabled={
+                                savingAthleteListFile ||
+                                isAnyActionLoading
                               }
-                              className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
-                            >
-                              Abrir pré-visualização
-                            </button>
+                              onChange={(event) => {
+                                const files = event.currentTarget.files;
+
+                                handleSelectAthleteListFiles(group.team, files);
+                                event.currentTarget.value = '';
+                              }}
+                              className="block w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-[var(--cdb-blue)] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+
+                            {pendingAthleteListFiles[group.team].length > 0 && (
+                              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                {pendingAthleteListFiles[group.team].map((file) => (
+                                  <div
+                                    key={file.id}
+                                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+                                  >
+                                    <img
+                                      src={file.dataUrl}
+                                      alt={file.fileName}
+                                      className="h-40 w-full object-contain bg-slate-50"
+                                    />
+
+                                    <div className="space-y-2 p-3">
+                                      <p className="truncate text-xs font-bold text-slate-700" title={file.fileName}>
+                                        {file.fileName}
+                                      </p>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => removePendingAthleteListFile(group.team, file.id)}
+                                        disabled={
+                                          savingAthleteListFile ||
+                                          isAnyActionLoading
+                                        }
+                                        className="w-full rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        Remover
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
+                        ))}
 
-                          {pendingAthleteListFile.fileType.startsWith('image/') && (
-                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                              <img
-                                src={pendingAthleteListFile.dataUrl}
-                                alt={pendingAthleteListFile.fileName}
-                                className="max-h-80 w-full object-contain"
-                              />
-                            </div>
-                          )}
+                        <p className="text-xs text-slate-500">
+                          Formatos aceitos: JPG, JPEG ou PNG. Tamanho máximo: 10 MB por imagem.
+                        </p>
 
-                          {pendingAthleteListFile.fileType === 'application/pdf' && (
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                              PDF selecionado. Clique em <strong>Abrir pré-visualização</strong> para conferir o arquivo antes de confirmar.
-                            </div>
-                          )}
-
-                          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                          {getPendingAthleteListFileCount() > 0 && (
                             <button
                               type="button"
                               onClick={cancelAthleteListPreview}
@@ -2443,31 +2646,32 @@ function formatTimeOnly(date: string) {
                               }
                               className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              Cancelar
+                              Limpar seleção
                             </button>
+                          )}
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                runExclusiveAction(
-                                  'athlete-list-upload',
-                                  confirmAthleteListUpload,
-                                )
-                              }
-                              disabled={
-                                savingAthleteListFile ||
-                                isAnyActionLoading
-                              }
-                              className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {actionLoading === 'athlete-list-upload' ||
-                              savingAthleteListFile
-                                ? 'Confirmando envio...'
-                                : 'Confirmar envio'}
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              runExclusiveAction(
+                                'athlete-list-upload',
+                                confirmAthleteListUpload,
+                              )
+                            }
+                            disabled={
+                              savingAthleteListFile ||
+                              isAnyActionLoading ||
+                              getPendingAthleteListFileCount() === 0
+                            }
+                            className="inline-flex items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {actionLoading === 'athlete-list-upload' ||
+                            savingAthleteListFile
+                              ? 'Gerando PDF...'
+                              : 'Gerar PDF e confirmar envio'}
+                          </button>
                         </div>
-                      )}
+                      </div>
                     </div>
                   ) : (
                     <p className="mt-4 text-xs text-slate-500">
