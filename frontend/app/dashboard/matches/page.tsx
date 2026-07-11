@@ -72,8 +72,10 @@ type Match = {
 type MissionOrderFile = {
   fileName: string;
   fileType: string;
-  dataUrl: string;
+  dataUrl?: string;
 };
+
+type MatchDocumentType = 'mission-order' | 'athlete-list' | 'final-document';
 
 type ModalVariant = 'danger' | 'success' | 'warning' | 'default';
 
@@ -378,12 +380,24 @@ export default function MatchesPage() {
     );
   }
 
+  function hasAthleteList(match: Match) {
+    return Boolean(
+      match.athleteListFileData ||
+        match.athleteListFileName ||
+        match.athleteListFileType,
+    );
+  }
+
   function hasFinalDocumentation(match: Match) {
     return Boolean(
       match.finalDocumentFileData ||
         match.finalDocumentFileName ||
         match.finalDocumentFileType,
     );
+  }
+
+  function hasAnyMatchDocument(match: Match) {
+    return hasMissionOrder(match) || hasAthleteList(match) || hasFinalDocumentation(match);
   }
 
   function isMatchToDo(match: Match) {
@@ -736,11 +750,15 @@ export default function MatchesPage() {
 
     clearMissionOrderFile();
 
-    if (match.missionOrderFileData) {
+    if (
+      match.missionOrderFileName ||
+      match.missionOrderFileType ||
+      match.missionOrderFileData
+    ) {
       setExistingMissionOrderFile({
         fileName: match.missionOrderFileName || 'ordem-de-missao',
         fileType: match.missionOrderFileType || 'application/octet-stream',
-        dataUrl: match.missionOrderFileData,
+        dataUrl: match.missionOrderFileData || undefined,
       });
     }
 
@@ -774,7 +792,7 @@ export default function MatchesPage() {
       };
     }
 
-    if (editingId && existingMissionOrderFile) {
+    if (editingId && existingMissionOrderFile?.dataUrl) {
       return {
         missionOrderFileName: existingMissionOrderFile.fileName,
         missionOrderFileType: existingMissionOrderFile.fileType,
@@ -883,6 +901,53 @@ export default function MatchesPage() {
             confirmText: 'Fechar',
           });
         }
+      },
+    });
+  }
+
+  async function downloadMatchDocument(
+    match: Match,
+    type: MatchDocumentType,
+  ) {
+    try {
+      const response = await api.get(`/matches/${match.id}/documents/${type}`);
+      const document = response.data;
+
+      if (!document?.fileData) {
+        showMessage(
+          'Documento não encontrado',
+          'Não foi possível localizar o arquivo solicitado.',
+          'warning',
+        );
+        return;
+      }
+
+      downloadDataUrl(
+        document.fileData,
+        document.fileName || 'documento-do-jogo',
+      );
+    } catch (error: any) {
+      showMessage(
+        'Erro ao baixar documento',
+        error.response?.data?.message || 'Não foi possível baixar o documento solicitado.',
+        'danger',
+      );
+    }
+  }
+
+  function confirmDownloadMatchDocument(
+    match: Match,
+    type: MatchDocumentType,
+    label: string,
+  ) {
+    showConfirm({
+      title: 'Baixar documento',
+      message: `Deseja baixar ${label} de ${match.homeTeam} x ${match.awayTeam}?`,
+      variant: 'default',
+      confirmText: 'Baixar',
+      onConfirm: async () => {
+        closeModal();
+        await downloadMatchDocument(match, type);
       },
     });
   }
@@ -1452,12 +1517,31 @@ export default function MatchesPage() {
 
                           <button
                             type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                existingMissionOrderFile.dataUrl,
-                                existingMissionOrderFile.fileName || 'ordem-de-missao',
-                              )
-                            }
+                            onClick={() => {
+                              if (existingMissionOrderFile.dataUrl) {
+                                downloadDataUrl(
+                                  existingMissionOrderFile.dataUrl,
+                                  existingMissionOrderFile.fileName || 'ordem-de-missao',
+                                );
+                                return;
+                              }
+
+                              if (!editingId) return;
+
+                              confirmDownloadMatchDocument(
+                                {
+                                  id: editingId,
+                                  homeTeam,
+                                  awayTeam,
+                                  matchDate: '',
+                                  status: '',
+                                  championship: { name: championshipName },
+                                  stadium: { name: stadiumName, city: '', state: '' },
+                                },
+                                'mission-order',
+                                'a ordem de missão',
+                              );
+                            }}
                             className="inline-flex rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
                           >
                             📄 Baixar documento atual
@@ -1714,23 +1798,21 @@ export default function MatchesPage() {
                       </div>
                     </div>
 
-                    {canViewMatchFiles &&
-                      (match.missionOrderFileData ||
-                        match.athleteListFileData ||
-                        match.finalDocumentFileData) && (
+                    {canViewMatchFiles && hasAnyMatchDocument(match) && (
                       <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
                         <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
                           Arquivos
                         </p>
 
                         <div className="flex flex-wrap gap-2">
-                          {match.missionOrderFileData && (
+                          {hasMissionOrder(match) && (
                             <button
                               type="button"
                               onClick={() =>
-                                downloadDataUrl(
-                                  match.missionOrderFileData!,
-                                  match.missionOrderFileName || 'ordem-de-missao',
+                                confirmDownloadMatchDocument(
+                                  match,
+                                  'mission-order',
+                                  'a ordem de missão',
                                 )
                               }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
@@ -1739,13 +1821,14 @@ export default function MatchesPage() {
                             </button>
                           )}
 
-                          {match.athleteListFileData && (
+                          {hasAthleteList(match) && (
                             <button
                               type="button"
                               onClick={() =>
-                                downloadDataUrl(
-                                  match.athleteListFileData!,
-                                  match.athleteListFileName || 'relacao-de-atletas',
+                                confirmDownloadMatchDocument(
+                                  match,
+                                  'athlete-list',
+                                  'a relação de atletas',
                                 )
                               }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
@@ -1754,13 +1837,14 @@ export default function MatchesPage() {
                             </button>
                           )}
 
-                          {match.finalDocumentFileData && (
+                          {hasFinalDocumentation(match) && (
                             <button
                               type="button"
                               onClick={() =>
-                                downloadDataUrl(
-                                  match.finalDocumentFileData!,
-                                  match.finalDocumentFileName || 'documentacao-do-jogo',
+                                confirmDownloadMatchDocument(
+                                  match,
+                                  'final-document',
+                                  'a documentação do jogo',
                                 )
                               }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
@@ -1918,23 +2002,21 @@ export default function MatchesPage() {
                             </div>
                           </div>
 
-                          {canViewMatchFiles &&
-                            (match.missionOrderFileData ||
-                              match.athleteListFileData ||
-                              match.finalDocumentFileData) && (
+                          {canViewMatchFiles && hasAnyMatchDocument(match) && (
                             <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
                               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
                                 Arquivos
                               </p>
 
                               <div className="flex flex-wrap gap-2">
-                                {match.missionOrderFileData && (
+                                {hasMissionOrder(match) && (
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      downloadDataUrl(
-                                        match.missionOrderFileData!,
-                                        match.missionOrderFileName || 'ordem-de-missao',
+                                      confirmDownloadMatchDocument(
+                                        match,
+                                        'mission-order',
+                                        'a ordem de missão',
                                       )
                                     }
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
@@ -1943,13 +2025,14 @@ export default function MatchesPage() {
                                   </button>
                                 )}
 
-                                {match.athleteListFileData && (
+                                {hasAthleteList(match) && (
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      downloadDataUrl(
-                                        match.athleteListFileData!,
-                                        match.athleteListFileName || 'relacao-de-atletas',
+                                      confirmDownloadMatchDocument(
+                                        match,
+                                        'athlete-list',
+                                        'a relação de atletas',
                                       )
                                     }
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
@@ -1958,13 +2041,14 @@ export default function MatchesPage() {
                                   </button>
                                 )}
 
-                                {match.finalDocumentFileData && (
+                                {hasFinalDocumentation(match) && (
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      downloadDataUrl(
-                                        match.finalDocumentFileData!,
-                                        match.finalDocumentFileName || 'documentacao-do-jogo',
+                                      confirmDownloadMatchDocument(
+                                        match,
+                                        'final-document',
+                                        'a documentação do jogo',
                                       )
                                     }
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"

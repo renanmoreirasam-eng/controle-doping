@@ -15,6 +15,11 @@ type OperationalStep =
   | 'DRAW_DONE'
   | 'CONTROL_DONE';
 
+type MatchDocumentType =
+  | 'mission-order'
+  | 'athlete-list'
+  | 'final-document';
+
 @Injectable()
 export class MatchesService {
   constructor(
@@ -23,6 +28,43 @@ export class MatchesService {
   ) {}
 
   private includeRelations = {
+    championship: true,
+    stadium: true,
+    officials: {
+      include: {
+        official: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+
+  private listSelect = {
+    id: true,
+    championshipId: true,
+    stadiumId: true,
+    homeTeam: true,
+    awayTeam: true,
+    matchDate: true,
+    status: true,
+    missionCode: true,
+    matchNumber: true,
+    roundOrPhase: true,
+    missionOrderFileName: true,
+    missionOrderFileType: true,
+    athleteListFileName: true,
+    athleteListFileType: true,
+    finalDocumentFileName: true,
+    finalDocumentFileType: true,
     championship: true,
     stadium: true,
     officials: {
@@ -525,6 +567,65 @@ export class MatchesService {
     });
   }
 
+  async findDocument(id: string, type: MatchDocumentType) {
+    const match = await this.prisma.match.findUnique({
+      where: { id },
+      select: {
+        missionOrderFileName: true,
+        missionOrderFileType: true,
+        missionOrderFileData: true,
+        athleteListFileName: true,
+        athleteListFileType: true,
+        athleteListFileData: true,
+        finalDocumentFileName: true,
+        finalDocumentFileType: true,
+        finalDocumentFileData: true,
+      },
+    });
+
+    if (!match) {
+      throw new BadRequestException('Jogo não encontrado.');
+    }
+
+    if (type === 'mission-order') {
+      if (!match.missionOrderFileData) {
+        throw new BadRequestException('Ordem de missão não encontrada.');
+      }
+
+      return {
+        fileName: match.missionOrderFileName || 'ordem-de-missao',
+        fileType: match.missionOrderFileType || 'application/octet-stream',
+        fileData: match.missionOrderFileData,
+      };
+    }
+
+    if (type === 'athlete-list') {
+      if (!match.athleteListFileData) {
+        throw new BadRequestException('Relação de atletas não encontrada.');
+      }
+
+      return {
+        fileName: match.athleteListFileName || 'relacao-de-atletas',
+        fileType: match.athleteListFileType || 'application/octet-stream',
+        fileData: match.athleteListFileData,
+      };
+    }
+
+    if (type === 'final-document') {
+      if (!match.finalDocumentFileData) {
+        throw new BadRequestException('Documentação do jogo não encontrada.');
+      }
+
+      return {
+        fileName: match.finalDocumentFileName || 'documentacao-do-jogo',
+        fileType: match.finalDocumentFileType || 'application/octet-stream',
+        fileData: match.finalDocumentFileData,
+      };
+    }
+
+    throw new BadRequestException('Tipo de documento inválido.');
+  }
+
   async remove(id: string) {
     return this.prisma.match.delete({
       where: { id },
@@ -545,7 +646,7 @@ export class MatchesService {
 
     if (userRole === 'ADMIN') {
       return this.prisma.match.findMany({
-        include: this.includeRelations,
+        select: this.listSelect,
         orderBy: {
           matchDate: 'desc',
         },
@@ -594,7 +695,7 @@ export class MatchesService {
           in: matchIds,
         },
       },
-      include: this.includeRelations,
+      select: this.listSelect,
       orderBy: {
         matchDate: 'desc',
       },

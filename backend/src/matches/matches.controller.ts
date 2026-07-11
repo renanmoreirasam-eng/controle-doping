@@ -178,6 +178,15 @@ export class MatchesController {
     return this.matchesService.findOperationalLogs(id);
   }
 
+  @Get(':id/documents/:type')
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async findDocument(
+    @Param('id') id: string,
+    @Param('type') type: 'mission-order' | 'athlete-list' | 'final-document',
+  ) {
+    return this.matchesService.findDocument(id, type);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
   async remove(@Param('id') id: string) {
