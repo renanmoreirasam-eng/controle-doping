@@ -560,7 +560,7 @@ export default function MatchesPage() {
   }
 
   function formatDate(date: string) {
-    return new Date(date).toLocaleString('pt-BR');
+    return new Date(date).toLocaleDateString('pt-BR');
   }
 
   function formatTime(date: string) {
@@ -1689,13 +1689,6 @@ export default function MatchesPage() {
                           </span>
                         )}
 
-                        <h3 className="text-xl font-black text-[var(--cdb-dark)] mt-1 leading-tight">
-                          {match.homeTeam} x {match.awayTeam}
-                        </h3>
-
-                        <p className="text-sm text-slate-500 mt-1">
-                          {match.championship.name}
-                        </p>
                       </div>
 
                       <span
@@ -1709,6 +1702,26 @@ export default function MatchesPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 text-sm">
+                    <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
+                        Jogo
+                      </p>
+
+                      <h3 className="mt-1 text-2xl font-black leading-tight text-[var(--cdb-dark)]">
+                        {match.homeTeam} x {match.awayTeam}
+                      </h3>
+
+                      <div className="mt-4 rounded-2xl border border-blue-100 bg-white/80 p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Campeonato
+                        </p>
+
+                        <p className="mt-1 text-sm font-black leading-snug text-slate-800">
+                          {match.championship.name}
+                        </p>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-slate-50 rounded-2xl p-3">
                         <p className="text-slate-500">Nº Jogo</p>
