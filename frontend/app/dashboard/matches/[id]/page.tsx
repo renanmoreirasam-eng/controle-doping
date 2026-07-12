@@ -781,8 +781,10 @@ export default function MatchDetailsPage() {
 
   const canUploadAthleteListFile =
     !!match &&
-    !isControlDone &&
-    isMissionCodeConfirmed;
+    (
+      (!isControlDone && isMissionCodeConfirmed) ||
+      (isAdmin && ['IN_PROGRESS', 'CONTROL_DONE'].includes(match.status))
+    );
 
   const canUploadFinalDocumentFile =
     isAdmin &&
@@ -2540,7 +2542,7 @@ function formatTimeOnly(date: string) {
                     </div>
                   )}
 
-                  {canUploadAthleteListFile && !match.athleteListFileName ? (
+                  {canUploadAthleteListFile && (!match.athleteListFileName || isAdmin) ? (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                       <div className="space-y-4">
                         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
@@ -2676,9 +2678,13 @@ function formatTimeOnly(date: string) {
                   ) : (
                     <p className="mt-4 text-xs text-slate-500">
                       {match.athleteListFileName
-                        ? 'Arquivo enviado. Não é possível enviar novamente após a confirmação.'
+                        ? isAdmin
+                          ? 'Arquivo enviado. Como ADMIN, você pode substituir a relação de atletas por um novo PDF.'
+                          : 'Arquivo enviado. Não é possível enviar novamente após a confirmação.'
                         : isControlDone
-                          ? 'Upload indisponível após o controle ser concluído.'
+                          ? isAdmin
+                            ? 'Como ADMIN, você pode enviar a relação de atletas mesmo com o controle concluído.'
+                            : 'Upload indisponível após o controle ser concluído.'
                           : 'Upload disponível após confirmar o código da missão.'}
                     </p>
                   )}
