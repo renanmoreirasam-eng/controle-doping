@@ -187,6 +187,15 @@ export class MatchesController {
     return this.matchesService.findDocument(id, type);
   }
 
+  @Get(':id/operation-summary')
+  @Roles('ADMIN', 'COORDINATOR', 'OFFICIAL')
+  async findOperationSummary(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.matchesService.findOperationSummary(id, req.user);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
   async remove(@Param('id') id: string) {

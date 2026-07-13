@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { jsPDF } from 'jspdf';
 import { useParams } from 'next/navigation';
 import { Sidebar } from '../../../../components/Sidebar';
 import { ConfirmModal } from '../../../../components/ConfirmModal';
@@ -259,45 +258,51 @@ function isMobileDevice() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-function openFileInNewTab(blobUrl: string) {
-  const openedWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
-
-  if (openedWindow) {
-    return true;
-  }
-
-  const link = document.createElement('a');
-
-  link.href = blobUrl;
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
-
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  return false;
-}
-
-function downloadDataUrl(dataUrl: string, fileName: string) {
+async function downloadDataUrl(dataUrl: string, fileName: string) {
   const blob = dataUrlToBlob(dataUrl);
-  const blobUrl = window.URL.createObjectURL(blob);
+  const safeFileName = fileName || 'documento-do-jogo';
 
   if (isMobileDevice()) {
-    openFileInNewTab(blobUrl);
+    const navigatorWithShare = navigator as Navigator & {
+      canShare?: (data: { files?: File[] }) => boolean;
+      share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
+    };
 
-    window.setTimeout(() => {
-      window.URL.revokeObjectURL(blobUrl);
-    }, 60000);
+    if (navigatorWithShare.share) {
+      try {
+        const file = new File([blob], safeFileName, {
+          type: blob.type || 'application/octet-stream',
+        });
 
-    return;
+        if (
+          !navigatorWithShare.canShare ||
+          navigatorWithShare.canShare({ files: [file] })
+        ) {
+          await navigatorWithShare.share({
+            files: [file],
+            title: safeFileName,
+            text: 'Documento do jogo',
+          });
+
+          return;
+        }
+      } catch (error: any) {
+        if (error?.name === 'AbortError') {
+          return;
+        }
+
+        console.warn('Não foi possível abrir o compartilhamento do arquivo.', error);
+      }
+    }
   }
 
+  const blobUrl = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
 
   link.href = blobUrl;
-  link.download = fileName;
+  link.download = safeFileName;
   link.rel = 'noopener noreferrer';
+  link.style.display = 'none';
 
   document.body.appendChild(link);
   link.click();
@@ -305,7 +310,7 @@ function downloadDataUrl(dataUrl: string, fileName: string) {
 
   window.setTimeout(() => {
     window.URL.revokeObjectURL(blobUrl);
-  }, 1000);
+  }, isMobileDevice() ? 60000 : 1000);
 }
 
 type MatchDocumentType = 'mission-order' | 'athlete-list' | 'final-document';
@@ -314,6 +319,17 @@ type MatchDocumentResponse = {
   fileName: string;
   fileType: string;
   fileData: string;
+};
+
+type OperationSummaryResponse = {
+  match: Match;
+  scales: Scale[];
+  draws: Draw[];
+  substitutions: Substitution[];
+  roomInspections: RoomInspection[];
+  operationalLogs: OperationalLog[];
+  matchKits: MatchKitItem[];
+  myKits: KitInventoryItem[];
 };
 
 export default function MatchDetailsPage() {
@@ -625,6 +641,30 @@ export default function MatchDetailsPage() {
     }
   }
 
+  function applyOperationSummary(summary: OperationSummaryResponse) {
+    setMatch(summary.match);
+    setScales(summary.scales || []);
+    setDraws(summary.draws || []);
+    setSubstitutions(summary.substitutions || []);
+    setRoomInspections(summary.roomInspections || []);
+    setOperationalLogs(summary.operationalLogs || []);
+    setMatchKits(summary.matchKits || []);
+    setMyKits(summary.myKits || []);
+    setSelectedKitIds([]);
+  }
+
+  async function loadOperationSummary() {
+    try {
+      const response = await api.get<OperationSummaryResponse>(
+        `/matches/${matchId}/operation-summary`,
+      );
+
+      applyOperationSummary(response.data);
+    } finally {
+      setScalesLoaded(true);
+    }
+  }
+
   async function loadMatch() {
     const response = await api.get(`/matches/${matchId}`);
     setMatch(response.data);
@@ -656,19 +696,7 @@ export default function MatchDetailsPage() {
   useEffect(() => {
     if (matchId) {
       setScalesLoaded(false);
-
-      loadMatch();
-      loadScales();
-      loadDraws();
-      loadSubstitutions();
-      loadRoomInspections();
-      loadOperationalLogs();
-      loadMyKits();
-      loadMatchKits();
-
-      window.setTimeout(() => {
-        refreshOperationData({ silent: true });
-      }, 800);
+      loadOperationSummary();
     }
   }, [matchId]);
 
@@ -897,30 +925,19 @@ export default function MatchDetailsPage() {
     }
 
     try {
-      const [
-        matchResponse,
-        drawsResponse,
-        substitutionsResponse,
-        roomInspectionsResponse,
-        logsResponse,
-        matchKitsResponse,
-      ] = await Promise.all([
-        api.get(`/matches/${matchId}`),
-        api.get('/draws'),
-        api.get(`/substitutions?matchId=${matchId}`),
-        api.get(`/room-inspections?matchId=${matchId}`),
-        api.get(`/matches/${matchId}/operational-logs`),
-        api.get(`/inventory/matches/${matchId}/kits`),
-      ]);
-
-      const nextMatch = matchResponse.data;
-      const nextDraws = drawsResponse.data.filter(
-        (draw: Draw) => draw.matchId === matchId,
+      const response = await api.get<OperationSummaryResponse>(
+        `/matches/${matchId}/operation-summary`,
       );
-      const nextSubstitutions = substitutionsResponse.data;
-      const nextRoomInspections = roomInspectionsResponse.data;
-      const nextOperationalLogs = logsResponse.data;
-      const nextMatchKits = matchKitsResponse.data || [];
+
+      const summary = response.data;
+      const nextMatch = summary.match;
+      const nextScales = summary.scales || [];
+      const nextDraws = summary.draws || [];
+      const nextSubstitutions = summary.substitutions || [];
+      const nextRoomInspections = summary.roomInspections || [];
+      const nextOperationalLogs = summary.operationalLogs || [];
+      const nextMatchKits = summary.matchKits || [];
+      const nextMyKits = summary.myKits || [];
 
       const nextSnapshot = getOperationalSnapshot({
         matchStatus: nextMatch?.status,
@@ -963,12 +980,15 @@ export default function MatchDetailsPage() {
       }
 
       setMatch(nextMatch);
+      setScales(nextScales);
       setDraws(nextDraws);
       setSubstitutions(nextSubstitutions);
       setRoomInspections(nextRoomInspections);
       setOperationalLogs(nextOperationalLogs);
       setMatchKits(nextMatchKits);
+      setMyKits(nextMyKits);
       setSelectedKitIds([]);
+      setScalesLoaded(true);
 
       lastOperationalSnapshotRef.current = nextSnapshot;
 
@@ -1193,8 +1213,7 @@ export default function MatchDetailsPage() {
 
     if (invalidSelectedKitIds.length > 0) {
       showMessage('Kit indisponível', 'A seleção possui kit que já foi utilizado ou não está mais disponível. Atualize a página e selecione novamente.', 'warning');
-      await loadMyKits();
-      await loadMatchKits();
+      await refreshOperationData({ silent: true });
       return;
     }
 
@@ -1205,8 +1224,7 @@ export default function MatchDetailsPage() {
         kitIds: selectedKitIds,
       });
 
-      await loadMyKits();
-      await loadMatchKits();
+      await refreshOperationData({ silent: true });
 
       showMessage('Kits registrados', 'Kits utilizados registrados com sucesso!', 'success');
     } catch (error: any) {
@@ -1228,8 +1246,7 @@ export default function MatchDetailsPage() {
         try {
           await api.delete(`/inventory/matches/${matchId}/kits/${kitId}`);
 
-          await loadMyKits();
-          await loadMatchKits();
+          await refreshOperationData({ silent: true });
 
           showMessage('Kit removido', 'Registro de kit utilizado removido com sucesso.', 'success');
         } catch (error: any) {
@@ -1258,7 +1275,6 @@ export default function MatchDetailsPage() {
 
       saveMissionCodeConfirmation(missionCode);
 
-      await loadMatch();
       await refreshOperationData({ silent: true });
       setMissionCodeConfirmed(true);
 
@@ -1301,6 +1317,8 @@ export default function MatchDetailsPage() {
     if (!match) {
       throw new Error('Jogo não carregado.');
     }
+
+    const { jsPDF } = await import('jspdf');
 
     const pdf = new jsPDF({
       orientation: 'portrait',
@@ -1490,7 +1508,6 @@ export default function MatchDetailsPage() {
         AWAY: [],
       });
 
-      await loadMatch();
       await refreshOperationData({ silent: true });
 
       showMessage(
@@ -1572,7 +1589,7 @@ export default function MatchDetailsPage() {
         return;
       }
 
-      await loadMatch();
+      await refreshOperationData({ silent: true });
 
       showMessage(
         'Documento salvo',
@@ -1619,10 +1636,7 @@ export default function MatchDetailsPage() {
             : undefined,
       });
 
-      await loadMatch();
-      await loadOperationalLogs();
-      await loadMyKits();
-      await loadMatchKits();
+      await refreshOperationData({ silent: true });
 
       if (status === 'CONTROL_DONE') {
         setControlComment('');
@@ -1805,7 +1819,7 @@ export default function MatchDetailsPage() {
       setRoomNotes('');
       setRoomPhotos([]);
 
-      await loadRoomInspections();
+      await refreshOperationData({ silent: true });
 
       showMessage('Inspeção salva', 'Inspeção da sala salva com sucesso!', 'success');
     } catch (error: any) {
@@ -1827,7 +1841,7 @@ export default function MatchDetailsPage() {
       onConfirm: async () => {
         try {
           await api.delete(`/room-inspections/${id}`);
-          await loadRoomInspections();
+          await refreshOperationData({ silent: true });
           showMessage('Inspeção excluída', 'Inspeção excluída com sucesso.', 'success');
         } catch (error: any) {
           showMessage('Erro ao excluir inspeção', getErrorMessage(error, 'Erro ao excluir inspeção'), 'danger');
@@ -1964,8 +1978,7 @@ export default function MatchDetailsPage() {
 
       setDrawnPlayers([]);
 
-      await loadDraws();
-      await loadOperationalLogs();
+      await refreshOperationData({ silent: true });
 
       showMessage('Sorteio salvo', 'Sorteio realizado com sucesso!', 'success');
     } catch (error: any) {
@@ -2023,7 +2036,7 @@ export default function MatchDetailsPage() {
         });
       }
 
-      await loadSubstitutions();
+      await refreshOperationData({ silent: true });
 
       showMessage('Substituições salvas', 'Substituições salvas com sucesso!', 'success');
     } catch (error: any) {
@@ -2045,7 +2058,7 @@ export default function MatchDetailsPage() {
       onConfirm: async () => {
         try {
           await api.delete(`/substitutions/${id}`);
-          await loadSubstitutions();
+          await refreshOperationData({ silent: true });
           showMessage('Substituição removida', 'Substituição removida com sucesso.', 'success');
         } catch (error: any) {
           showMessage('Erro ao remover substituição', getErrorMessage(error, 'Erro ao remover substituição'), 'danger');

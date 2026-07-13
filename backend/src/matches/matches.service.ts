@@ -573,6 +573,132 @@ export class MatchesService {
     });
   }
 
+  async findOperationSummary(id: string, user?: any) {
+    const userId =
+      user?.sub ||
+      user?.id ||
+      user?.userId ||
+      null;
+
+    const currentOfficial = userId
+      ? await this.prisma.official.findFirst({
+          where: {
+            userId,
+            active: true,
+          },
+          select: {
+            id: true,
+          },
+        })
+      : null;
+
+    const [
+      match,
+      draws,
+      substitutions,
+      roomInspections,
+      operationalLogs,
+      matchKits,
+      myKits,
+    ] = await Promise.all([
+      this.prisma.match.findUnique({
+        where: { id },
+        select: this.detailSelect,
+      }),
+      this.prisma.draw.findMany({
+        where: { matchId: id },
+        include: {
+          players: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.substitution.findMany({
+        where: { matchId: id },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      }),
+      this.prisma.roomInspection.findMany({
+        where: { matchId: id },
+        select: {
+          id: true,
+          matchId: true,
+          status: true,
+          notes: true,
+          createdAt: true,
+          items: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.matchOperationalLog.findMany({
+        where: { matchId: id },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      }),
+      this.prisma.matchKit.findMany({
+        where: { matchId: id },
+        include: {
+          kit: true,
+          official: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      currentOfficial
+        ? this.prisma.kit.findMany({
+            where: {
+              currentOfficialId: currentOfficial.id,
+              status: {
+                in: ['COM_DCO', 'UTILIZADO'],
+              },
+            },
+            select: {
+              id: true,
+              number: true,
+              status: true,
+            },
+            orderBy: {
+              number: 'asc',
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    if (!match) {
+      throw new BadRequestException('Jogo não encontrado.');
+    }
+
+    return {
+      match,
+      scales: match.officials || [],
+      draws,
+      substitutions,
+      roomInspections: roomInspections.map((inspection) => ({
+        ...inspection,
+        photos: [],
+      })),
+      operationalLogs,
+      matchKits,
+      myKits,
+    };
+  }
+
   async findDocument(id: string, type: MatchDocumentType) {
     const match = await this.prisma.match.findUnique({
       where: { id },
