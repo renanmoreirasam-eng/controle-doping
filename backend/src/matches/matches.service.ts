@@ -85,6 +85,12 @@ export class MatchesService {
     },
   };
 
+  private detailSelect = {
+    ...this.listSelect,
+    createdAt: true,
+    updatedAt: true,
+  };
+
   private getOperationalStepByStatus(status: MatchStatus): OperationalStep | null {
     if (status === 'SCALE_ACCEPTED') {
       return 'CHECKIN_STADIUM';
@@ -261,7 +267,7 @@ export class MatchesService {
         matchDate: parsedMatchDate,
         status: 'SCHEDULED',
       },
-      include: this.includeRelations,
+      select: this.detailSelect,
     });
 
     const hasMissionOrder =
@@ -366,7 +372,7 @@ export class MatchesService {
         matchDate: parsedMatchDate,
         status: data.status,
       },
-      include: this.includeRelations,
+      select: this.detailSelect,
     });
 
     if (shouldNotifyMissionOrder) {
@@ -387,7 +393,7 @@ export class MatchesService {
       data: {
         missionCode: missionCode?.trim() || null,
       },
-      include: this.includeRelations,
+      select: this.detailSelect,
     });
   }
 
@@ -416,7 +422,7 @@ export class MatchesService {
         finalDocumentFileType: data.finalDocumentFileType,
         finalDocumentFileData: data.finalDocumentFileData,
       },
-      include: this.includeRelations,
+      select: this.detailSelect,
     });
 
     if (shouldNotifyFinalDocument) {
@@ -483,7 +489,7 @@ export class MatchesService {
     const match = await this.prisma.match.update({
       where: { id },
       data: { status },
-      include: this.includeRelations,
+      select: this.detailSelect,
     });
 
     const step = this.getOperationalStepByStatus(status);
@@ -635,7 +641,7 @@ export class MatchesService {
   async findOne(id: string) {
     return this.prisma.match.findUnique({
       where: { id },
-      include: this.includeRelations,
+      select: this.detailSelect,
     });
   }
 
