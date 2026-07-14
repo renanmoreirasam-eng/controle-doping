@@ -26,6 +26,12 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
+    name: 'Relatórios',
+    href: '/dashboard/reports',
+    icon: '📈',
+    roles: ['ADMIN'],
+  },
+  {
     name: 'Estoque de Kits',
     href: '/dashboard/inventory',
     icon: '📦',
