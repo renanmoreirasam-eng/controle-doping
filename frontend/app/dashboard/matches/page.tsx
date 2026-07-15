@@ -571,11 +571,40 @@ export default function MatchesPage() {
   }
 
   function formatDateOnly(date: string) {
-    return new Date(date).toISOString().slice(0, 10);
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return '';
+    }
+
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
   }
 
   function formatTimeOnly(date: string) {
-    return new Date(date).toTimeString().slice(0, 5);
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return '';
+    }
+
+    const hours = String(parsedDate.getHours()).padStart(2, '0');
+    const minutes = String(parsedDate.getMinutes()).padStart(2, '0');
+
+    return `${hours}:${minutes}`;
+  }
+
+  function buildMatchDatePayload(date: string, time: string) {
+    const parsedDate = new Date(`${date}T${time}:00`);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return '';
+    }
+
+    return parsedDate.toISOString();
   }
 
   function parseRoundOrPhase(value?: string | null): {
@@ -813,7 +842,7 @@ export default function MatchesPage() {
     }
 
     try {
-      const fullMatchDate = `${matchDate}T${matchTime}:00`;
+      const fullMatchDate = buildMatchDatePayload(matchDate, matchTime);
 
       await api.post('/matches', {
         championshipId: selectedChampionshipId,
@@ -848,7 +877,7 @@ export default function MatchesPage() {
     }
 
     try {
-      const fullMatchDate = `${matchDate}T${matchTime}:00`;
+      const fullMatchDate = buildMatchDatePayload(matchDate, matchTime);
 
       await api.patch(`/matches/${editingId}`, {
         championshipId: selectedChampionshipId,
@@ -1672,149 +1701,105 @@ export default function MatchesPage() {
 
             <div className="lg:hidden space-y-4">
               {filteredMatches.map((match) => (
-                <div
+                <article
                   key={match.id}
-                  className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm"
+                  className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm"
                 >
-                  <div className="flex flex-col gap-3 mb-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        {match.missionCode ? (
-                          <span className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
-                            🎯 Missão {getMissionCodeDisplay(match.missionCode)}
-                          </span>
-                        ) : (
-                          <span className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">
-                            🎯 Sem missão
-                          </span>
-                        )}
+                  <div className="border-b border-slate-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-4">
+                    <div className="space-y-3">
+                      <div className="min-w-0 w-full">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Partida
+                        </p>
 
+                        <h3 className="mt-1 w-full break-words text-xl font-black leading-snug text-[var(--cdb-dark)] sm:text-2xl">
+                          {match.homeTeam} x {match.awayTeam}
+                        </h3>
                       </div>
 
                       <span
                         className={`${getStatusClass(
                           match,
-                        )} px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap`}
+                        )} inline-flex w-fit rounded-full px-3 py-1 text-xs font-black`}
                       >
                         {getStatusLabel(match)}
                       </span>
                     </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {match.missionCode ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
+                          🎯 Missão {getMissionCodeDisplay(match.missionCode)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500">
+                          🎯 Sem missão
+                        </span>
+                      )}
+
+                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600">
+                        #{match.matchNumber || '-'}
+                      </span>
+
+                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600">
+                        {match.roundOrPhase || 'Sem rodada/fase'}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 text-sm">
-                    <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
-                        Jogo
-                      </p>
-
-                      <h3 className="mt-1 text-2xl font-black leading-tight text-[var(--cdb-dark)]">
-                        {match.homeTeam} x {match.awayTeam}
-                      </h3>
-
-                      <div className="mt-4 rounded-2xl border border-blue-100 bg-white/80 p-3">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  <div className="space-y-4 p-4">
+                    <div className="grid grid-cols-1 gap-3 text-sm">
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
                           Campeonato
                         </p>
 
-                        <p className="mt-1 text-sm font-black leading-snug text-slate-800">
+                        <p className="mt-1 font-black leading-snug text-slate-800">
                           {match.championship.name}
                         </p>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-slate-50 rounded-2xl p-3">
-                        <p className="text-slate-500">Nº Jogo</p>
-                        <strong>{match.matchNumber || '-'}</strong>
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                          Local
+                        </p>
+
+                        <p className="mt-1 font-black text-slate-800">
+                          🏟️ {match.stadium.name}
+                        </p>
+
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {match.stadium.city}/{match.stadium.state}
+                        </p>
                       </div>
 
-                      <div className="bg-slate-50 rounded-2xl p-3">
-                        <p className="text-slate-500">Rodada/Fase</p>
-                        <strong>{match.roundOrPhase || '-'}</strong>
-                      </div>
-                    </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[var(--cdb-blue)]">
+                            Data
+                          </p>
 
-                    <div className="bg-slate-50 rounded-2xl p-3">
-                      <p className="text-slate-500">Estádio</p>
-                      <strong>🏟️ {match.stadium.name}</strong>
-                    </div>
+                          <p className="mt-1 font-black text-slate-900">
+                            {formatDate(match.matchDate)}
+                          </p>
+                        </div>
 
-                    <div className="bg-slate-50 rounded-2xl p-3">
-                      <p className="text-slate-500">Cidade</p>
-                      <strong>
-                        {match.stadium.city}/{match.stadium.state}
-                      </strong>
-                    </div>
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">
+                            Horário
+                          </p>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-slate-50 rounded-2xl p-3">
-                        <p className="text-slate-500">Data</p>
-                        <strong>{formatDate(match.matchDate)}</strong>
-                      </div>
-
-                      <div className="bg-slate-50 rounded-2xl p-3">
-                        <p className="text-slate-500">Horário</p>
-                        <strong>{formatTime(match.matchDate)}</strong>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  <div className="mt-5 space-y-3">
-                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
-                      <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-                        Operação
-                      </p>
-
-                      <div className="flex flex-wrap gap-2">
-                        {canOpenMatchOperation(match) ? (
-                          <Link
-                            href={`/dashboard/matches/${match.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                          >
-                            🧪 Abrir operação
-                          </Link>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled
-                            title={
-                              userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE'
-                                ? 'Operação finalizada. Oficiais não têm acesso após a conclusão.'
-                                : 'A operação será liberada a partir do dia do jogo.'
-                            }
-                            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
-                          >
-                            🧪 Operação
-                          </button>
-                        )}
-
-                        {isAdmin && match.status !== 'CONTROL_DONE' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(match)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                            >
-                              ✏️ Editar
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => deleteMatch(match.id)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                            >
-                              🗑️ Excluir
-                            </button>
-                          </>
-                        )}
+                          <p className="mt-1 font-black text-slate-900">
+                            {formatTime(match.matchDate)}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
                     {canViewMatchFiles && hasAnyMatchDocument(match) && (
                       <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
                         <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
-                          Arquivos
+                          Documentos
                         </p>
 
                         <div className="flex flex-wrap gap-2">
@@ -1830,7 +1815,7 @@ export default function MatchesPage() {
                               }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
                             >
-                              📄 Ordem de missão
+                              📄 O. Missão
                             </button>
                           )}
 
@@ -1846,7 +1831,7 @@ export default function MatchesPage() {
                               }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
                             >
-                              👥 Relação de atletas
+                              👥 Relação A.
                             </button>
                           )}
 
@@ -1862,166 +1847,164 @@ export default function MatchesPage() {
                               }
                               className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
                             >
-                              📎 Documentação do jogo
+                              📎 Doc Final
                             </button>
                           )}
                         </div>
                       </div>
                     )}
 
+                    <div className="grid grid-cols-1 gap-2">
+                      {canOpenMatchOperation(match) ? (
+                        <Link
+                          href={`/dashboard/matches/${match.id}`}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700"
+                        >
+                          🧪 Abrir operação
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          title={
+                            userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE'
+                              ? 'Operação finalizada. Oficiais não têm acesso após a conclusão.'
+                              : 'A operação será liberada a partir do dia do jogo.'
+                          }
+                          className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-400"
+                        >
+                          🧪 Operação indisponível
+                        </button>
+                      )}
+
+                      {isAdmin && match.status !== 'CONTROL_DONE' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(match)}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                          >
+                            ✏️ Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteMatch(match.id)}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-black text-red-700 transition hover:bg-red-100"
+                          >
+                            🗑️ Excluir
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
 
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
-                    <th className="py-4 pr-4">
-                      Jogo
-                    </th>
+            <div className="hidden lg:block">
+              <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-separate border-spacing-0">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                        <th className="px-5 py-4">
+                          Jogo / Competição
+                        </th>
 
-                    <th className="py-4 pr-4">
-                      Nº/Rodada
-                    </th>
+                        <th className="px-5 py-4">
+                          Local
+                        </th>
 
-                    <th className="py-4 pr-4">
-                      Campeonato
-                    </th>
+                        <th className="px-5 py-4">
+                          Data/Hora
+                        </th>
 
-                    <th className="py-4 pr-4">
-                      Estádio
-                    </th>
+                        <th className="px-5 py-4">
+                          Documentos
+                        </th>
 
-                    <th className="py-4 pr-4">
-                      Data
-                    </th>
+                        <th className="px-5 py-4">
+                          Status
+                        </th>
 
-                    <th className="py-4 pr-4">
-                      Status
-                    </th>
+                        <th className="px-5 py-4 text-right">
+                          Ações
+                        </th>
+                      </tr>
+                    </thead>
 
-                    <th className="py-4 pr-4">
-                      Ações
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredMatches.map((match) => (
-                    <tr
-                      key={match.id}
-                      className="border-b border-slate-100 hover:bg-slate-50 transition"
-                    >
-                      <td className="py-5 pr-4">
-                        <div className="font-black text-[var(--cdb-dark)]">
-                          {match.homeTeam} x{' '}
-                          {match.awayTeam}
-                        </div>
-
-                        <div className="text-sm text-slate-500 mt-1">
-                          {match.stadium.city}/
-                          {match.stadium.state}
-                        </div>
-
-                        {match.missionCode && (
-                          <span className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
-                            🎯 Missão {getMissionCodeDisplay(match.missionCode)}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-5 pr-4 text-slate-700">
-                        <div className="font-bold text-slate-900">
-                          {match.matchNumber ? `Jogo ${match.matchNumber}` : '-'}
-                        </div>
-                        <div className="mt-1 text-sm text-slate-500">
-                          {match.roundOrPhase || '-'}
-                        </div>
-                      </td>
-
-                      <td className="py-5 pr-4 text-slate-700">
-                        {match.championship.name}
-                      </td>
-
-                      <td className="py-5 pr-4 text-slate-700">
-                        🏟️ {match.stadium.name}
-                      </td>
-
-                      <td className="py-5 pr-4 text-sm text-slate-600 whitespace-nowrap">
-                        {formatDate(match.matchDate)}
-                      </td>
-
-                      <td className="py-5 pr-4">
-                        <span
-                          className={`${getStatusClass(
-                            match,
-                          )} px-3 py-1 rounded-full text-sm font-semibold`}
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredMatches.map((match) => (
+                        <tr
+                          key={match.id}
+                          className="bg-white transition hover:bg-slate-50/80"
                         >
-                          {getStatusLabel(match)}
-                        </span>
-                      </td>
-
-                      <td className="py-5 pr-4">
-                        <div className="flex min-w-[260px] flex-col gap-3">
-                          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
-                            <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-                              Operação
-                            </p>
-
-                            <div className="flex flex-wrap gap-2">
-                              {canOpenMatchOperation(match) ? (
-                                <Link
-                                  href={`/dashboard/matches/${match.id}`}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                                >
-                                  🧪 Abrir operação
-                                </Link>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled
-                                  title={
-                              userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE'
-                                ? 'Operação finalizada. Oficiais não têm acesso após a conclusão.'
-                                : 'A operação será liberada a partir do dia do jogo.'
-                            }
-                                  className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400"
-                                >
-                                  🧪 Operação
-                                </button>
-                              )}
-
-                              {isAdmin && match.status !== 'CONTROL_DONE' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => startEdit(match)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                                  >
-                                    ✏️ Editar
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteMatch(match.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                                  >
-                                    🗑️ Excluir
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          {canViewMatchFiles && hasAnyMatchDocument(match) && (
-                            <div className="rounded-2xl border border-purple-100 bg-purple-50 p-3">
-                              <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-purple-700">
-                                Arquivos
+                          <td className="px-5 py-5 align-top">
+                            <div className="max-w-[390px]">
+                              <p className="text-base font-black leading-tight text-[var(--cdb-dark)]">
+                                {match.homeTeam} x {match.awayTeam}
                               </p>
 
-                              <div className="flex flex-wrap gap-2">
+                              <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--cdb-blue)]">
+                                  Competição
+                                </p>
+
+                                <p className="mt-1 text-sm font-black leading-snug text-slate-800">
+                                  {match.championship.name}
+                                </p>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">
+                                  Jogo {match.matchNumber || '-'}
+                                </span>
+
+                                <span className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">
+                                  {match.roundOrPhase || 'Sem rodada/fase'}
+                                </span>
+
+                                {match.missionCode ? (
+                                  <span className="inline-flex items-center rounded-xl border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-black text-[var(--cdb-blue)]">
+                                    🎯 {getMissionCodeDisplay(match.missionCode)}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-400">
+                                    Sem missão
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-5 align-top">
+                            <div className="max-w-[220px]">
+                              <p className="text-sm font-black text-slate-800">
+                                🏟️ {match.stadium.name}
+                              </p>
+
+                              <p className="mt-1 text-xs font-semibold text-slate-500">
+                                {match.stadium.city}/{match.stadium.state}
+                              </p>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-5 align-top whitespace-nowrap">
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
+                              <p className="text-sm font-black text-slate-900">
+                                {formatDate(match.matchDate)}
+                              </p>
+
+                              <p className="mt-1 text-xs font-black text-[var(--cdb-blue)]">
+                                ⏰ {formatTime(match.matchDate)}
+                              </p>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-5 align-top">
+                            {canViewMatchFiles && hasAnyMatchDocument(match) ? (
+                              <div className="flex max-w-[180px] flex-wrap gap-2">
                                 {hasMissionOrder(match) && (
                                   <button
                                     type="button"
@@ -2032,9 +2015,9 @@ export default function MatchesPage() {
                                         'a ordem de missão',
                                       )
                                     }
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100"
+                                    className="rounded-xl border border-purple-100 bg-purple-50 px-2.5 py-1.5 text-xs font-black text-purple-700 transition hover:bg-purple-100"
                                   >
-                                    📄 Ordem de missão
+                                    O. Missão
                                   </button>
                                 )}
 
@@ -2048,9 +2031,9 @@ export default function MatchesPage() {
                                         'a relação de atletas',
                                       )
                                     }
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                                    className="rounded-xl border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
                                   >
-                                    👥 Relação de atletas
+                                    Relação A.
                                   </button>
                                 )}
 
@@ -2064,21 +2047,80 @@ export default function MatchesPage() {
                                         'a documentação do jogo',
                                       )
                                     }
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                                    className="rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 py-1.5 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
                                   >
-                                    📎 Documentação do jogo
+                                    Doc Final
                                   </button>
                                 )}
                               </div>
-                            </div>
-                          )}
+                            ) : (
+                              <span className="inline-flex rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-400">
+                                Sem documentos
+                              </span>
+                            )}
+                          </td>
 
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                          <td className="px-5 py-5 align-top">
+                            <span
+                              className={`${getStatusClass(
+                                match,
+                              )} inline-flex rounded-full px-3 py-1.5 text-xs font-black`}
+                            >
+                              {getStatusLabel(match)}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-5 align-top">
+                            <div className="flex min-w-[190px] flex-col items-end gap-2">
+                              {canOpenMatchOperation(match) ? (
+                                <Link
+                                  href={`/dashboard/matches/${match.id}`}
+                                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-emerald-700"
+                                >
+                                  🧪 Operação
+                                </Link>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled
+                                  title={
+                                    userRole === 'OFFICIAL' && match.status === 'CONTROL_DONE'
+                                      ? 'Operação finalizada. Oficiais não têm acesso após a conclusão.'
+                                      : 'A operação será liberada a partir do dia do jogo.'
+                                  }
+                                  className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-400"
+                                >
+                                  🧪 Operação
+                                </button>
+                              )}
+
+                              {isAdmin && match.status !== 'CONTROL_DONE' && (
+                                <div className="grid w-full grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEdit(match)}
+                                    className="inline-flex items-center justify-center gap-1 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                                  >
+                                    ✏️ Editar
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteMatch(match.id)}
+                                    className="inline-flex items-center justify-center gap-1 rounded-2xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-700 transition hover:bg-red-100"
+                                  >
+                                    🗑️ Excluir
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
             {filteredMatches.length === 0 && (
