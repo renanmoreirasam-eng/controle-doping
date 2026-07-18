@@ -17,7 +17,25 @@ export class MatchOfficialsService {
 
   private includeRelations = {
     match: {
-      include: {
+      select: {
+        id: true,
+        championshipId: true,
+        stadiumId: true,
+        homeTeam: true,
+        awayTeam: true,
+        missionCode: true,
+        matchNumber: true,
+        roundOrPhase: true,
+        missionOrderFileName: true,
+        missionOrderFileType: true,
+        athleteListFileName: true,
+        athleteListFileType: true,
+        finalDocumentFileName: true,
+        finalDocumentFileType: true,
+        matchDate: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
         championship: true,
         stadium: true,
       },
