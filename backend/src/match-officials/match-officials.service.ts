@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 
@@ -13,6 +14,7 @@ export class MatchOfficialsService {
   constructor(
     private prisma: PrismaService,
     private pushService: PushService,
+    private financeService: FinanceService,
   ) {}
 
   private includeRelations = {
@@ -84,6 +86,17 @@ export class MatchOfficialsService {
       return;
     }
 
+    const match = await this.prisma.match.findUnique({
+      where: {
+        id: matchId,
+      },
+      select: {
+        status: true,
+      },
+    });
+
+    const alreadyAccepted = match?.status === 'SCALE_ACCEPTED';
+
     await this.prisma.match.update({
       where: {
         id: matchId,
@@ -92,6 +105,20 @@ export class MatchOfficialsService {
         status: 'SCALE_ACCEPTED',
       },
     });
+
+    if (alreadyAccepted) {
+      return;
+    }
+
+    try {
+      await this.financeService.generateForAcceptedScale(matchId);
+    } catch (error) {
+      // A ausência de tabela financeira não pode impedir o aceite da escala.
+      console.error(
+        `[Financeiro] Não foi possível gerar os lançamentos do jogo ${matchId}:`,
+        error,
+      );
+    }
   }
 
   async create(data: {
