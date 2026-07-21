@@ -18,6 +18,11 @@ type Match = {
   missionOrderFileData?: string | null;
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
+  officials?: {
+    id: string;
+    role: "DCO" | "ASSISTANT";
+    confirmed: boolean | null;
+  }[];
 };
 
 type Official = {
@@ -298,6 +303,16 @@ function ScalesPageContent() {
     );
   }
 
+  function hasAnyOfficialAssociated(match: Match) {
+    return Boolean(
+      match.officials?.some(
+        (official) =>
+          official.role === "DCO" ||
+          official.role === "ASSISTANT",
+      ),
+    );
+  }
+
   const groupedScales = scaleGroups;
 
   const filteredGroups = groupedScales;
@@ -323,15 +338,13 @@ function ScalesPageContent() {
           return false;
         }
 
-        const group = groupedScales.find((item) => item.match.id === match.id);
-
-        return !group;
+        return !hasAnyOfficialAssociated(match);
       })
       .sort(
         (a, b) =>
           new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime(),
       );
-  }, [matches, groupedScales, editingMatchId]);
+  }, [matches, editingMatchId]);
 
   function clearForm() {
     setEditingMatchId(null);
@@ -897,7 +910,7 @@ function ScalesPageContent() {
                   </select>
 
                   <p className="mt-2 text-xs text-slate-500">
-                    São listados apenas jogos ativos e ainda sem escala cadastrada.
+                    São listados apenas jogos ativos sem DCO ou Assistente associado.
                   </p>
                 </div>
 
