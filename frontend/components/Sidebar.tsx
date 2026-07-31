@@ -14,15 +14,15 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
-    name: 'Escalas',
-    href: '/dashboard/scales',
-    icon: '📋',
-    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
-  },
-  {
     name: 'Jogos',
     href: '/dashboard/matches',
     icon: '🏟️',
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
+  },
+  {
+    name: 'Escalas',
+    href: '/dashboard/scales',
+    icon: '📋',
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
