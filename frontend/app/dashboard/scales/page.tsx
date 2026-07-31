@@ -164,7 +164,7 @@ function ScalesPageContent() {
 
   const loggedUserName = user?.name || user?.user?.name;
 
-  const isAdmin = ["ADMIN", "ADM", "COORDINATOR"].includes(userRole);
+  const isAdmin = ["ADMIN", "ADM"].includes(userRole);
 
   function closeModal() {
     setModal(initialModalState);
@@ -616,6 +616,15 @@ function ScalesPageContent() {
   }
 
   function startEdit(group: ScaleGroup) {
+    if (!isAdmin) {
+      showMessage(
+        "Permissão negada",
+        "Somente administradores podem editar escalas.",
+        "warning",
+      );
+      return;
+    }
+
     setEditingMatchId(group.match.id);
     setMatchId(group.match.id);
     setDcoOfficialId(group.dco?.officialId || "");
