@@ -25,6 +25,13 @@ type Match = {
   }[];
 };
 
+type Team = {
+  id: string;
+  name: string;
+  shortName?: string | null;
+  isActive?: boolean;
+};
+
 type Official = {
   id: string;
   active: boolean;
@@ -126,6 +133,9 @@ function ScalesPageContent() {
   const [scales, setScales] = useState<Scale[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [officials, setOfficials] = useState<Official[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [expandedTeamKey, setExpandedTeamKey] = useState<string | null>(null);
+  const [expandedOfficialKey, setExpandedOfficialKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -152,7 +162,9 @@ function ScalesPageContent() {
 
   const loggedUserEmail = user?.email || user?.user?.email;
 
-  const isAdmin = userRole === "ADMIN";
+  const loggedUserName = user?.name || user?.user?.name;
+
+  const isAdmin = ["ADMIN", "ADM", "COORDINATOR"].includes(userRole);
 
   function closeModal() {
     setModal(initialModalState);
@@ -247,9 +259,17 @@ function ScalesPageContent() {
     setOfficials(response.data.filter((item: Official) => item.active));
   }
 
+  async function loadTeams() {
+    const response = await api.get("/teams");
+    setTeams(
+      response.data.filter((team: Team) => team.isActive !== false),
+    );
+  }
+
   useEffect(() => {
     loadMatches();
     loadOfficials();
+    loadTeams();
   }, []);
 
   useEffect(() => {
@@ -276,27 +296,91 @@ function ScalesPageContent() {
     endDate,
   ]);
 
+  function normalizeIdentity(value?: string | null) {
+    return String(value || "")
+      .trim()
+      .toLocaleLowerCase("pt-BR");
+  }
+
+  function isOwnScale(scale?: Scale) {
+    if (!scale) return false;
+
+    const loggedUserIdentifiers = [
+      loggedUserId,
+      loggedUserEmail,
+      loggedUserName,
+      user?.officialId,
+      user?.official?.id,
+      user?.official?.user?.id,
+      user?.official?.user?.email,
+      user?.official?.user?.name,
+      user?.user?.officialId,
+      user?.user?.official?.id,
+      user?.user?.official?.user?.id,
+      user?.user?.official?.user?.email,
+      user?.user?.official?.user?.name,
+    ]
+      .map((value) => normalizeIdentity(value))
+      .filter(Boolean);
+
+    const scaleIdentifiers = [
+      scale.officialId,
+      scale.official?.id,
+      scale.official?.user?.id,
+      scale.official?.user?.email,
+      scale.official?.user?.name,
+    ]
+      .map((value) => normalizeIdentity(value))
+      .filter(Boolean);
+
+    return scaleIdentifiers.some((identifier) =>
+      loggedUserIdentifiers.includes(identifier),
+    );
+  }
+
+  function getScaleConfirmationState(scale?: Scale) {
+    if (!scale) return "MISSING" as const;
+
+    const value = scale.confirmed as boolean | string | null | undefined;
+
+    if (
+      value === true ||
+      String(value).trim().toUpperCase() === "TRUE" ||
+      String(value).trim().toUpperCase() === "CONFIRMED"
+    ) {
+      return "CONFIRMED" as const;
+    }
+
+    if (
+      value === false ||
+      String(value).trim().toUpperCase() === "FALSE" ||
+      String(value).trim().toUpperCase() === "REFUSED"
+    ) {
+      return "REFUSED" as const;
+    }
+
+    return "PENDING" as const;
+  }
+
   function canConfirmScale(scale?: Scale) {
     if (!scale) return false;
 
-    return (
-      scale.official?.user?.id === loggedUserId ||
-      scale.official?.user?.email === loggedUserEmail
-    );
+    // ADMIN/ADM/COORDINATOR podem responder qualquer escala.
+    if (isAdmin) return true;
+
+    // DCO e Oficial podem responder somente a própria escala.
+    return isOwnScale(scale);
   }
 
   function canRespondScale(scale?: Scale) {
     if (!scale) return false;
-    if (!canConfirmScale(scale)) return false;
 
-    return scale.confirmed === null;
-  }
+    // Os botões aparecem somente enquanto a escala estiver pendente.
+    if (getScaleConfirmationState(scale) !== "PENDING") {
+      return false;
+    }
 
-  function isOwnScale(scale: Scale) {
-    return (
-      scale.official?.user?.id === loggedUserId ||
-      scale.official?.user?.email === loggedUserEmail
-    );
+    return canConfirmScale(scale);
   }
 
   function hasMissionOrder(match?: Match | null) {
@@ -314,6 +398,94 @@ function ScalesPageContent() {
           official.role === "DCO" ||
           official.role === "ASSISTANT",
       ),
+    );
+  }
+
+  function getTeamShortName(teamName: string) {
+    const normalizedName = String(teamName || "").trim();
+    const team = teams.find(
+      (item) =>
+        item.name.trim().toLocaleLowerCase("pt-BR") ===
+        normalizedName.toLocaleLowerCase("pt-BR"),
+    );
+
+    const configuredShortName = String(team?.shortName || "").trim();
+
+    if (configuredShortName) {
+      return configuredShortName.toUpperCase();
+    }
+
+    return normalizedName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9]/g, "")
+      .slice(0, 3)
+      .toUpperCase();
+  }
+
+  function getFirstName(fullName: string) {
+    const normalizedName = String(fullName || "").trim();
+
+    if (!normalizedName) return "Não escalado";
+
+    return normalizedName.split(/\s+/)[0];
+  }
+
+  function renderTeamName(
+    teamName: string,
+    key: string,
+    size: "desktop" | "mobile" = "desktop",
+  ) {
+    const isExpanded = expandedTeamKey === key;
+    const shortName = getTeamShortName(teamName);
+
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          setExpandedTeamKey((current) => (current === key ? null : key))
+        }
+        aria-expanded={isExpanded}
+        aria-label={`${isExpanded ? "Mostrar nome curto de" : "Mostrar nome completo de"} ${teamName}`}
+        title={isExpanded ? "Voltar para o nome curto" : `Mostrar ${teamName}`}
+        className={`inline-flex max-w-full items-center rounded-lg border border-blue-100 bg-blue-50 font-black text-[var(--cdb-blue)] underline decoration-dotted underline-offset-4 transition hover:border-blue-200 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+          size === "mobile"
+            ? "px-3 py-1.5 text-xl"
+            : "px-2 py-1 text-base"
+        } ${isExpanded ? "whitespace-normal text-left leading-snug" : "whitespace-nowrap"}`}
+      >
+        {isExpanded ? teamName : shortName}
+      </button>
+    );
+  }
+
+  function renderOfficialName(scale: Scale | undefined, key: string) {
+    if (!scale) {
+      return <span className="text-sm text-slate-400">Não escalado</span>;
+    }
+
+    const fullName = scale.official.user.name;
+    const firstName = getFirstName(fullName);
+    const isExpanded = expandedOfficialKey === key;
+    const canExpand = firstName !== fullName;
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (!canExpand) return;
+          setExpandedOfficialKey((current) => (current === key ? null : key));
+        }}
+        aria-expanded={isExpanded}
+        title={isExpanded ? "Mostrar primeiro nome" : fullName}
+        className={`break-words text-left font-black leading-tight text-slate-900 ${
+          canExpand
+            ? "cursor-pointer underline decoration-dotted underline-offset-4 transition hover:text-[var(--cdb-blue)] focus:outline-none focus:ring-2 focus:ring-blue-100"
+            : "cursor-default"
+        }`}
+      >
+        {isExpanded ? fullName : firstName}
+      </button>
     );
   }
 
@@ -455,22 +627,27 @@ function ScalesPageContent() {
   }
 
   function getStatus(scale?: Scale) {
-    if (!scale) return "Não escalado";
-    if (scale.confirmed === true) return "Confirmado";
-    if (scale.confirmed === false) return "Recusado";
+    const state = getScaleConfirmationState(scale);
+
+    if (state === "MISSING") return "Não escalado";
+    if (state === "CONFIRMED") return "Confirmado";
+    if (state === "REFUSED") return "Recusado";
+
     return "Pendente";
   }
 
   function getStatusClass(scale?: Scale) {
-    if (!scale) {
+    const state = getScaleConfirmationState(scale);
+
+    if (state === "MISSING") {
       return "bg-slate-100 text-slate-600 border border-slate-200";
     }
 
-    if (scale.confirmed === true) {
+    if (state === "CONFIRMED") {
       return "bg-green-100 text-green-700 border border-green-200";
     }
 
-    if (scale.confirmed === false) {
+    if (state === "REFUSED") {
       return "bg-red-100 text-red-700 border border-red-200";
     }
 
@@ -483,23 +660,108 @@ function ScalesPageContent() {
   ) {
     const baseClassName = `${getStatusClass(scale)} ${className}`;
 
-    if (canResendScaleNotification(scale)) {
-      return (
-        <button
-          type="button"
-          onClick={() => resendScaleNotification(scale)}
-          className={`${baseClassName} inline-flex items-center justify-center gap-1 transition hover:brightness-95`}
-          title="Reenviar notificação push"
-        >
-          {getStatus(scale)} 🔔
-        </button>
-      );
-    }
-
     return (
       <span className={baseClassName}>
         {getStatus(scale)}
       </span>
+    );
+  }
+
+  function renderScaleConfirmation(
+    scale: Scale | undefined,
+    roleLabel: "DCO" | "OF",
+    compact = false,
+  ) {
+    const state = getScaleConfirmationState(scale);
+
+    const wrapperClass = compact
+      ? "flex min-h-8 flex-wrap items-center gap-2"
+      : "flex min-h-8 min-w-[220px] flex-wrap items-center gap-2";
+
+    const roleClass =
+      "inline-flex w-9 shrink-0 items-center text-[10px] font-black uppercase tracking-[0.12em] text-slate-400";
+
+    if (state === "MISSING") {
+      return (
+        <div className={wrapperClass}>
+          <span className={roleClass}>{roleLabel}</span>
+          <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-600">
+            Não escalado
+          </span>
+        </div>
+      );
+    }
+
+    if (state === "CONFIRMED") {
+      return (
+        <div className={wrapperClass}>
+          <span className={roleClass}>{roleLabel}</span>
+          {renderScaleStatus(
+            scale,
+            "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black",
+          )}
+        </div>
+      );
+    }
+
+    if (state === "REFUSED") {
+      return (
+        <div className={wrapperClass}>
+          <span className={roleClass}>{roleLabel}</span>
+          {renderScaleStatus(
+            scale,
+            "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black",
+          )}
+        </div>
+      );
+    }
+
+    if (!canRespondScale(scale)) {
+      return (
+        <div className={wrapperClass}>
+          <span className={roleClass}>{roleLabel}</span>
+          {renderScaleStatus(
+            scale,
+            "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black",
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className={wrapperClass}>
+        <span className={roleClass}>{roleLabel}</span>
+
+        <button
+          type="button"
+          onClick={() => confirmScale(scale)}
+          className="inline-flex items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+        >
+          Aceitar
+        </button>
+
+        <button
+          type="button"
+          onClick={() => refuseScale(scale)}
+          className="inline-flex items-center justify-center rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 transition hover:bg-amber-100"
+        >
+          Recusar
+        </button>
+
+        {canResendScaleNotification(scale) && (
+          <button
+            type="button"
+            onClick={() => resendScaleNotification(scale)}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-sm text-[var(--cdb-blue)] transition hover:bg-blue-100"
+            title="Reenviar notificação push"
+            aria-label={`Reenviar notificação push para ${
+              scale?.official?.user?.name || "o oficial"
+            }`}
+          >
+            🔔
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -676,7 +938,11 @@ function ScalesPageContent() {
   }
 
   function canResendScaleNotification(scale?: Scale) {
-    return isAdmin && Boolean(scale) && scale?.confirmed === null;
+    return (
+      isAdmin &&
+      Boolean(scale) &&
+      getScaleConfirmationState(scale) === "PENDING"
+    );
   }
 
   async function resendScaleNotification(scale?: Scale) {
@@ -1224,7 +1490,7 @@ function ScalesPageContent() {
                   <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-blue-50 px-5 py-4">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
-                        Campeonato
+                        Competição
                       </p>
                       <h3 className="mt-1 text-lg font-black text-[var(--cdb-blue)]">
                         {championshipGroup.name}
@@ -1247,162 +1513,110 @@ function ScalesPageContent() {
                     </p>
 
                     <h3 className="mt-1 text-xl font-black text-[var(--cdb-dark)]">
-                      {group.match.homeTeam} x {group.match.awayTeam}
+                      {renderTeamName(
+                        group.match.homeTeam,
+                        `${group.match.id}-mobile-home`,
+                        "mobile",
+                      )}{" "}
+                      x{" "}
+                      {renderTeamName(
+                        group.match.awayTeam,
+                        `${group.match.id}-mobile-away`,
+                        "mobile",
+                      )}
                     </h3>
 
-                    <p className="mt-1 text-sm text-slate-500">
-                      {group.match.stadium.city}/{group.match.stadium.state}
-                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 text-sm">
+                  <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                     <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                      <p className="text-slate-500">Estádio</p>
-                      <strong>🏟️ {group.match.stadium.name}</strong>
+                      <p className="text-slate-500">Local</p>
+                      <strong className="mt-1 block text-[var(--cdb-dark)]">
+                        🏟️ {group.match.stadium.name}
+                      </strong>
+                      <span className="mt-1 block text-xs font-semibold text-slate-500">
+                        {group.match.stadium.city}/{group.match.stadium.state}
+                      </span>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                      <p className="text-slate-500">Data e horário</p>
-                      <strong>
-                        {new Date(group.match.matchDate).toLocaleString(
+                      <p className="text-slate-500">Data/Hora</p>
+                      <strong className="mt-1 block text-[var(--cdb-dark)]">
+                        {new Date(group.match.matchDate).toLocaleDateString(
                           "pt-BR",
                         )}
                       </strong>
+                      <span className="mt-1 block text-xs font-black text-[var(--cdb-blue)]">
+                        ⏰{" "}
+                        {new Date(group.match.matchDate).toLocaleTimeString(
+                          "pt-BR",
+                          {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          },
+                        )}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-3">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                      Oficiais da escala
+                    </p>
+
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                      <div className="flex min-h-8 min-w-0 items-center gap-2">
+                        <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-[var(--cdb-blue)]">
                           DCO
-                        </p>
-
-                        {renderScaleStatus(group.dco)}
+                        </span>
+                        <div className="min-w-0">
+                          {renderOfficialName(
+                            group.dco,
+                            `${group.match.id}-mobile-dco`,
+                          )}
+                        </div>
                       </div>
 
-                      {group.dco ? (
+                      <div className="flex min-h-8 min-w-0 items-center gap-2">
+                        <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-700">
+                          OF
+                        </span>
                         <div className="min-w-0">
-                          <h4 className="break-words font-black leading-tight text-slate-900">
-                            {group.dco.official.user.name}
-                          </h4>
-
-                          <p className="mt-1 break-all text-sm text-slate-500">
-                            {group.dco.official.user.email}
-                          </p>
+                          {renderOfficialName(
+                            group.assistant,
+                            `${group.match.id}-mobile-assistant`,
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-sm text-slate-400">Não escalado</p>
-                      )}
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                          Assistente
-                        </p>
-
-                        {renderScaleStatus(group.assistant)}
                       </div>
-
-                      {group.assistant ? (
-                        <div className="min-w-0">
-                          <h4 className="break-words font-black leading-tight text-slate-900">
-                            {group.assistant.official.user.name}
-                          </h4>
-
-                          <p className="mt-1 break-all text-sm text-slate-500">
-                            {group.assistant.official.user.email}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-slate-400">Não escalado</p>
-                      )}
                     </div>
                   </div>
 
-                  {(canRespondScale(group.dco) ||
-                    canRespondScale(group.assistant)) && (
-                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
-                        Minha confirmação
-                      </p>
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                      Status e confirmação
+                    </p>
 
-                      <div className="space-y-3">
-                        {canRespondScale(group.dco) && (
-                          <div>
-                            <p className="mb-2 text-sm font-bold text-slate-700">
-                              DCO
-                            </p>
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => confirmScale(group.dco)}
-                                className="rounded-xl bg-green-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-green-700"
-                              >
-                                Confirmar
-                              </button>
-
-                              <button
-                                onClick={() => refuseScale(group.dco)}
-                                className="rounded-xl bg-yellow-500 px-3 py-3 text-sm font-bold text-white transition hover:bg-yellow-600"
-                              >
-                                Recusar
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {canRespondScale(group.assistant) && (
-                          <div>
-                            <p className="mb-2 text-sm font-bold text-slate-700">
-                              Assistente
-                            </p>
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() =>
-                                  confirmScale(group.assistant)
-                                }
-                                className="rounded-xl bg-green-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-green-700"
-                              >
-                                Confirmar
-                              </button>
-
-                              <button
-                                onClick={() => refuseScale(group.assistant)}
-                                className="rounded-xl bg-yellow-500 px-3 py-3 text-sm font-bold text-white transition hover:bg-yellow-600"
-                              >
-                                Recusar
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                    <div className="space-y-3">
+                      {renderScaleConfirmation(group.dco, "DCO", true)}
+                      {renderScaleConfirmation(group.assistant, "OF", true)}
                     </div>
-                  )}
+                  </div>
 
                   {isAdmin && (
-                    <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                      <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-[var(--cdb-blue)]">
-                        Administração
-                      </p>
+                    <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                      <button
+                        onClick={() => startEdit(group)}
+                        className="inline-flex items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-sm font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                      >
+                        Editar
+                      </button>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => startEdit(group)}
-                          className="rounded-xl bg-[var(--cdb-blue)] px-3 py-3 text-sm font-bold text-white transition hover:brightness-95"
-                        >
-                          Editar
-                        </button>
-
-                        <button
-                          onClick={() => deleteFullScale(group)}
-                          className="rounded-xl bg-red-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-red-700"
-                        >
-                          Excluir
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => deleteFullScale(group)}
+                        className="inline-flex items-center justify-center rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-sm font-black text-red-700 transition hover:bg-red-100"
+                      >
+                        Excluir
+                      </button>
                     </div>
                   )}
 
@@ -1426,10 +1640,10 @@ function ScalesPageContent() {
                   Todos os campeonatos
                 </p>
                 <h3 className="mt-1 text-xl font-black text-[var(--cdb-dark)]">
-                  Escalas agrupadas por campeonato
+                  Escalas agrupadas por competição
                 </h3>
                 <p className="mt-1 text-sm font-semibold text-slate-500">
-                  {filteredGroups.length} jogo{filteredGroups.length === 1 ? "" : "s"} em {groupedFilteredGroups.length} campeonato{groupedFilteredGroups.length === 1 ? "" : "s"}.
+                  {filteredGroups.length} jogo{filteredGroups.length === 1 ? "" : "s"} em {groupedFilteredGroups.length} {groupedFilteredGroups.length === 1 ? "competição" : "competições"}.
                 </p>
               </div>
 
@@ -1441,7 +1655,7 @@ function ScalesPageContent() {
                   <div className="flex items-center justify-between gap-4 border-b border-blue-100 bg-blue-50 px-5 py-4">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
-                        Campeonato
+                        Competição
                       </p>
                       <h3 className="mt-1 text-xl font-black text-[var(--cdb-blue)]">
                         {championshipGroup.name}
@@ -1452,14 +1666,27 @@ function ScalesPageContent() {
                     </span>
                   </div>
                   <div className="max-w-full overflow-x-auto px-5">
-              <table className="min-w-[980px] w-full border-collapse">
+              <table className={`${isAdmin ? "min-w-[1180px]" : "min-w-[1080px]"} w-full table-fixed border-collapse`}>
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
-                    <th className="py-4 pr-4 font-black">Jogo</th>
-                    <th className="py-4 pr-4 font-black">Data</th>
-                    <th className="py-4 pr-4 font-black">Estádio</th>
-                    <th className="py-4 pr-4 font-black">Oficiais da escala</th>
-                    <th className="py-4 pr-4 font-black">Ações</th>
+                    <th className={`${isAdmin ? "w-[18%]" : "w-[20%]"} py-4 pr-4 font-black`}>
+                      Jogo
+                    </th>
+                    <th className={`${isAdmin ? "w-[20%]" : "w-[23%]"} py-4 pr-4 font-black`}>
+                      Local
+                    </th>
+                    <th className={`${isAdmin ? "w-[12%]" : "w-[13%]"} py-4 pr-4 font-black`}>
+                      Data/Hora
+                    </th>
+                    <th className={`${isAdmin ? "w-[20%]" : "w-[22%]"} py-4 pr-4 font-black`}>
+                      Oficiais da escala
+                    </th>
+                    <th className={`${isAdmin ? "w-[20%]" : "w-[22%]"} py-4 pr-4 font-black`}>
+                      Status e confirmação
+                    </th>
+                    {isAdmin && (
+                      <th className="w-[10%] py-4 font-black">Ações</th>
+                    )}
                   </tr>
                 </thead>
 
@@ -1469,173 +1696,106 @@ function ScalesPageContent() {
                       key={group.match.id}
                       className="border-b border-slate-100 transition hover:bg-slate-50"
                     >
-                      <td className="py-5 pr-4">
+                      <td className="py-5 pr-4 align-top">
                         <div className="font-black text-[var(--cdb-dark)]">
-                          {group.match.homeTeam} x {group.match.awayTeam}
+                          {renderTeamName(
+                            group.match.homeTeam,
+                            `${group.match.id}-desktop-home`,
+                          )}{" "}
+                          x{" "}
+                          {renderTeamName(
+                            group.match.awayTeam,
+                            `${group.match.id}-desktop-away`,
+                          )}
                         </div>
-
-                        <div className="mt-1 text-sm text-slate-500">
-                          {group.match.stadium.city}/{group.match.stadium.state}
-                        </div>
                       </td>
 
 
-                      <td className="whitespace-nowrap py-5 pr-4 text-sm text-slate-600">
-                        {new Date(group.match.matchDate).toLocaleString(
-                          "pt-BR",
-                        )}
-                      </td>
-
-                      <td className="py-5 pr-4 text-slate-700">
-                        🏟️ {group.match.stadium.name}
-                      </td>
-
-                      <td className="py-5 pr-4">
-                        <div className="min-w-[300px] space-y-3">
-                          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                                DCO
-                              </p>
-                              {group.dco ? (
-                                <>
-                                  <p className="mt-1 truncate font-bold text-slate-800">
-                                    {group.dco.official.user.name}
-                                  </p>
-                                  <p className="truncate text-xs text-slate-500">
-                                    {group.dco.official.user.email}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="mt-1 text-sm text-slate-400">
-                                  Não escalado
-                                </p>
-                              )}
-                            </div>
-
-                            {renderScaleStatus(
-                              group.dco,
-                              "inline-flex min-w-[105px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
-                            )}
+                      <td className="py-5 pr-4 align-top">
+                        <div className="min-w-[210px]">
+                          <div className="flex min-h-8 items-start font-black leading-snug text-[var(--cdb-dark)]">
+                            🏟️ {group.match.stadium.name}
                           </div>
-
-                          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                                Assistente
-                              </p>
-                              {group.assistant ? (
-                                <>
-                                  <p className="mt-1 truncate font-bold text-slate-800">
-                                    {group.assistant.official.user.name}
-                                  </p>
-                                  <p className="truncate text-xs text-slate-500">
-                                    {group.assistant.official.user.email}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="mt-1 text-sm text-slate-400">
-                                  Não escalado
-                                </p>
-                              )}
-                            </div>
-
-                            {renderScaleStatus(
-                              group.assistant,
-                              "inline-flex min-w-[105px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
-                            )}
+                          <div className="mt-2 min-h-5 text-xs font-semibold text-slate-500">
+                            {group.match.stadium.city}/{group.match.stadium.state}
                           </div>
                         </div>
                       </td>
 
-                      <td className="py-5 pr-4">
-                        <div className="flex min-w-[220px] flex-col gap-3">
-                          {(canRespondScale(group.dco) ||
-                            canRespondScale(group.assistant)) && (
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                              <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
-                                Minha confirmação
-                              </p>
-
-                              <div className="flex flex-col gap-2">
-                                {canRespondScale(group.dco) && (
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() =>
-                                        confirmScale(group.dco)
-                                      }
-                                      className="flex-1 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700"
-                                    >
-                                      Confirmar DCO
-                                    </button>
-
-                                    <button
-                                      onClick={() => refuseScale(group.dco)}
-                                      className="flex-1 rounded-xl bg-yellow-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-yellow-600"
-                                    >
-                                      Recusar
-                                    </button>
-                                  </div>
-                                )}
-
-                                {canRespondScale(group.assistant) && (
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() =>
-                                        confirmScale(group.assistant)
-                                      }
-                                      className="flex-1 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-green-700"
-                                    >
-                                      Confirmar Assist.
-                                    </button>
-
-                                    <button
-                                      onClick={() =>
-                                        refuseScale(group.assistant)
-                                      }
-                                      className="flex-1 rounded-xl bg-yellow-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-yellow-600"
-                                    >
-                                      Recusar
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                      <td className="whitespace-nowrap py-5 pr-4 align-top">
+                        <div className="flex min-h-8 items-start font-black text-[var(--cdb-dark)]">
+                          {new Date(group.match.matchDate).toLocaleDateString(
+                            "pt-BR",
                           )}
-
-                          {isAdmin && (
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3">
-                              <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--cdb-blue)]">
-                                Administração
-                              </p>
-
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => startEdit(group)}
-                                  className="flex-1 rounded-xl bg-[var(--cdb-blue)] px-3 py-2 text-sm font-bold text-white transition hover:brightness-95"
-                                >
-                                  Editar
-                                </button>
-
-                                <button
-                                  onClick={() => deleteFullScale(group)}
-                                  className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-red-700"
-                                >
-                                  Excluir
-                                </button>
-                              </div>
-                            </div>
+                        </div>
+                        <div className="mt-2 min-h-5 text-xs font-black text-[var(--cdb-blue)]">
+                          ⏰{" "}
+                          {new Date(group.match.matchDate).toLocaleTimeString(
+                            "pt-BR",
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
                           )}
-
-                          {!isAdmin &&
-                            !canConfirmScale(group.dco) &&
-                            !canConfirmScale(group.assistant) && (
-                              <span className="rounded-xl bg-slate-100 px-3 py-2 text-center text-sm text-slate-400">
-                                Sem ação disponível
-                              </span>
-                            )}
                         </div>
                       </td>
+
+                      <td className="py-5 pr-4 align-top">
+                        <div className="flex min-w-[230px] flex-col items-start gap-2 text-sm">
+                          <div className="flex min-h-8 min-w-0 items-center gap-2">
+                            <span className="inline-flex w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-[var(--cdb-blue)]">
+                              DCO
+                            </span>
+                            <div className="min-w-0">
+                              {renderOfficialName(
+                                group.dco,
+                                `${group.match.id}-desktop-dco`,
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex min-h-8 min-w-0 items-center gap-2">
+                            <span className="inline-flex w-9 shrink-0 items-center justify-center rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-700">
+                              OF
+                            </span>
+                            <div className="min-w-0">
+                              {renderOfficialName(
+                                group.assistant,
+                                `${group.match.id}-desktop-assistant`,
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-5 pr-4 align-top">
+                        <div className="flex min-w-[250px] flex-col gap-2">
+                          {renderScaleConfirmation(group.dco, "DCO")}
+                          {renderScaleConfirmation(group.assistant, "OF")}
+                        </div>
+                      </td>
+
+                      {isAdmin && (
+                        <td className="py-5 align-top">
+                          <div className="flex w-full min-w-[96px] max-w-[110px] flex-col items-stretch gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(group)}
+                              className="inline-flex w-full items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                            >
+                              Editar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => deleteFullScale(group)}
+                              className="inline-flex w-full items-center justify-center rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-700 transition hover:bg-red-100"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
