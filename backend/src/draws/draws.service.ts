@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 
@@ -115,6 +115,32 @@ export class DrawsService {
       type: 'EXAME' | 'RESERVA';
     }[];
   }) {
+    const match = await this.prisma.match.findUnique({
+      where: { id: data.matchId },
+      select: { id: true, status: true },
+    });
+
+    if (!match) {
+      throw new NotFoundException('Jogo não encontrado.');
+    }
+
+    if (match.status !== 'IN_PROGRESS') {
+      throw new BadRequestException(
+        'O sorteio só pode ser registrado enquanto o jogo estiver em andamento.',
+      );
+    }
+
+    const existingDraw = await this.prisma.draw.findFirst({
+      where: { matchId: data.matchId },
+      select: { id: true },
+    });
+
+    if (existingDraw) {
+      throw new BadRequestException(
+        'Já existe um sorteio para este jogo. Utilize a opção de alteração.',
+      );
+    }
+
     const created = await this.prisma.draw.create({
       data: {
         matchId: data.matchId,
@@ -136,6 +162,77 @@ export class DrawsService {
     });
 
     return created;
+  }
+
+  async updateByMatch(
+    matchId: string,
+    data: {
+      players: {
+        team: string;
+        name: string;
+        nickname?: string;
+        number: string;
+        type: 'EXAME' | 'RESERVA';
+      }[];
+    },
+  ) {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      select: {
+        id: true,
+        status: true,
+        homeTeam: true,
+        awayTeam: true,
+      },
+    });
+
+    if (!match) {
+      throw new NotFoundException('Jogo não encontrado.');
+    }
+
+    if (match.status !== 'IN_PROGRESS') {
+      throw new BadRequestException(
+        'O sorteio só pode ser alterado enquanto o jogo estiver em andamento.',
+      );
+    }
+
+    const existingDraw = await this.prisma.draw.findFirst({
+      where: { matchId },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (!existingDraw) {
+      throw new NotFoundException('Sorteio não encontrado para este jogo.');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.drawPlayer.deleteMany({
+        where: { drawId: existingDraw.id },
+      });
+
+      return tx.draw.update({
+        where: { id: existingDraw.id },
+        data: {
+          players: {
+            create: data.players,
+          },
+        },
+        include: {
+          players: true,
+          match: true,
+        },
+      });
+    });
+
+    await this.notifyDrawCreated(updated).catch((error) => {
+      console.error(
+        'Erro ao enviar notificação de sorteio alterado:',
+        error,
+      );
+    });
+
+    return updated;
   }
 
   async findAll() {

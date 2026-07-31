@@ -18,6 +18,13 @@ type Match = {
   championship: { name: string };
   stadium: { name: string; city: string; state: string };
   missionCode?: string;
+  missionOrderAnalysis?: string | null;
+  extraMaterialUsed?: boolean | null;
+  extraMaterialNotes?: string | null;
+  extraMaterialRegisteredAt?: string | null;
+  extraMaterialRegisteredById?: string | null;
+  extraMaterialRegisteredByName?: string | null;
+  extraMaterialRegisteredByEmail?: string | null;
   missionOrderFileName?: string | null;
   missionOrderFileType?: string | null;
   missionOrderFileData?: string | null;
@@ -46,7 +53,7 @@ type Scale = {
   role: string;
   confirmed: boolean | null;
   matchId: string;
-  official: { user: { name: string; email: string } };
+  official: { id: string; user: { name: string; email: string } };
 };
 
 type DrawPlayer = {
@@ -164,6 +171,39 @@ type MatchKitItem = {
   };
 };
 
+type ExtraMaterialStockItem = {
+  id: string;
+  itemId: string;
+  quantity: number;
+  officialId?: string | null;
+  item: {
+    id: string;
+    name: string;
+    active: boolean;
+  };
+};
+
+type ExtraMaterialUsageItem = {
+  id: string;
+  matchId: string;
+  itemId: string;
+  officialId: string;
+  quantity: number;
+  createdAt: string;
+  updatedAt: string;
+  item: {
+    id: string;
+    name: string;
+    active: boolean;
+  };
+  official?: {
+    user?: {
+      name: string;
+      email: string;
+    };
+  };
+};
+
 
 function createEmptySubstitutionRows(): SubstitutionFormRow[] {
   return Array.from({ length: 5 }, () => ({
@@ -210,6 +250,7 @@ type ActionKey =
   | 'save-draw'
   | 'match-kits'
   | 'finish-control'
+  | 'extra-materials'
   | 'final-document-upload'
   | 'substitutions';
 
@@ -224,6 +265,54 @@ const initialModalState: ModalState = {
 function getErrorMessage(error: any, fallback: string) {
   const message = error?.response?.data?.message || error?.message || fallback;
   return Array.isArray(message) ? message.join(' ') : String(message);
+}
+
+const DEFAULT_MISSION_ORDER_ANALYSIS = 'Urine';
+const COMPLEMENTARY_MISSION_ORDER_ANALYSIS =
+  'Urine + GHRF (GHS/GHRP), ERAs (incl. recombinant ERAs and analogues)';
+
+const REQUIRED_COLLECTOR_MATERIAL_NAME = 'Copo coletor';
+const REQUIRED_COLLECTOR_USAGE_QUANTITY = 2;
+
+function normalizeMaterialLabel(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isCollectorMaterialName(value?: string | null) {
+  return (
+    normalizeMaterialLabel(value) ===
+    normalizeMaterialLabel(REQUIRED_COLLECTOR_MATERIAL_NAME)
+  );
+}
+
+function isFormMaterialName(value?: string | null) {
+  return normalizeMaterialLabel(value).startsWith('formulario');
+}
+
+function hasMissionOrder(match?: Match | null) {
+  return Boolean(
+    match?.missionOrderFileName ||
+      match?.missionOrderFileType ||
+      match?.missionOrderAnalysis,
+  );
+}
+
+function getMissionOrderAnalysisDisplay(match?: Match | null) {
+  return String(match?.missionOrderAnalysis || '').trim() || DEFAULT_MISSION_ORDER_ANALYSIS;
+}
+
+function hasComplementaryMissionOrderAnalysis(match?: Match | null) {
+  const analysis = getMissionOrderAnalysisDisplay(match);
+
+  return (
+    analysis === COMPLEMENTARY_MISSION_ORDER_ANALYSIS ||
+    analysis !== DEFAULT_MISSION_ORDER_ANALYSIS
+  );
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -330,6 +419,8 @@ type OperationSummaryResponse = {
   operationalLogs: OperationalLog[];
   matchKits: MatchKitItem[];
   myKits: KitInventoryItem[];
+  extraMaterialUsages: ExtraMaterialUsageItem[];
+  myExtraMaterialStocks: ExtraMaterialStockItem[];
 };
 
 export default function MatchDetailsPage() {
@@ -348,6 +439,15 @@ export default function MatchDetailsPage() {
   const [operationalLogs, setOperationalLogs] = useState<OperationalLog[]>([]);
   const [myKits, setMyKits] = useState<KitInventoryItem[]>([]);
   const [matchKits, setMatchKits] = useState<MatchKitItem[]>([]);
+  const [myExtraMaterialStocks, setMyExtraMaterialStocks] = useState<ExtraMaterialStockItem[]>([]);
+  const [extraMaterialUsages, setExtraMaterialUsages] = useState<ExtraMaterialUsageItem[]>([]);
+  const [extraMaterialUseOption, setExtraMaterialUseOption] = useState<'NO' | 'YES'>('NO');
+  const [extraMaterialQuantities, setExtraMaterialQuantities] = useState<Record<string, string>>({});
+  const [extraMaterialNotes, setExtraMaterialNotes] = useState('');
+  const [savingExtraMaterials, setSavingExtraMaterials] = useState(false);
+  const [editingExtraMaterials, setEditingExtraMaterials] = useState(false);
+  const [selectedExtraMaterialOfficialId, setSelectedExtraMaterialOfficialId] = useState('');
+  const [loadingExtraMaterialStocks, setLoadingExtraMaterialStocks] = useState(false);
   const linkedKitIds = matchKits.map((item) => item.kitId);
   const availableKitsForMatch = myKits.filter(
     (kit) => kit.status === 'COM_DCO' && !linkedKitIds.includes(kit.id),
@@ -365,6 +465,7 @@ export default function MatchDetailsPage() {
   const [playerNickname, setPlayerNickname] = useState('');
   const [playerType, setPlayerType] = useState<'EXAME' | 'RESERVA'>('EXAME');
   const [drawnPlayers, setDrawnPlayers] = useState<DrawPlayer[]>([]);
+  const [editingDraw, setEditingDraw] = useState(false);
   const [drawForm, setDrawForm] = useState<DrawForm>({
     homeExamNumber: '',
     homeExamName: '',
@@ -641,6 +742,123 @@ export default function MatchDetailsPage() {
     }
   }
 
+  function buildExtraMaterialQuantityState(
+    usages: ExtraMaterialUsageItem[],
+    stocks: ExtraMaterialStockItem[] = [],
+  ) {
+    const quantities: Record<string, string> = {};
+
+    for (const usage of usages || []) {
+      const isCollector = isCollectorMaterialName(usage.item?.name);
+      const currentQuantity = Number(quantities[usage.itemId] || 0);
+      const usageQuantity = Number(usage.quantity || 0);
+
+      quantities[usage.itemId] = String(
+        currentQuantity +
+          (isCollector
+            ? Math.max(0, usageQuantity - REQUIRED_COLLECTOR_USAGE_QUANTITY)
+            : usageQuantity),
+      );
+    }
+
+    const collectorStock = stocks.find((stock) =>
+      isCollectorMaterialName(stock.item?.name),
+    );
+
+    if (collectorStock && quantities[collectorStock.itemId] === undefined) {
+      quantities[collectorStock.itemId] = '0';
+    }
+
+    return quantities;
+  }
+
+  function syncExtraMaterialForm(
+    nextMatch: Match | null,
+    nextUsages: ExtraMaterialUsageItem[],
+    nextStocks: ExtraMaterialStockItem[] = [],
+  ) {
+    const hasNonCollectorMaterial = (nextUsages || []).some(
+      (usage) => !isCollectorMaterialName(usage.item?.name),
+    );
+
+    setExtraMaterialUseOption(hasNonCollectorMaterial ? 'YES' : 'NO');
+    setExtraMaterialNotes(nextMatch?.extraMaterialNotes || '');
+    setExtraMaterialQuantities(
+      buildExtraMaterialQuantityState(nextUsages, nextStocks),
+    );
+  }
+
+  function getExtraMaterialUsagesForSelectedDco() {
+    if (isAdmin && selectedExtraMaterialOfficialId) {
+      return extraMaterialUsages.filter(
+        (usage) => usage.officialId === selectedExtraMaterialOfficialId,
+      );
+    }
+
+    return extraMaterialUsages;
+  }
+
+  function isUsageInCurrentExtraMaterialContext(usage: ExtraMaterialUsageItem) {
+    if (isAdmin && selectedExtraMaterialOfficialId) {
+      return usage.officialId === selectedExtraMaterialOfficialId;
+    }
+
+    return true;
+  }
+
+  function getExtraMaterialQuantity(itemId: string) {
+    return extraMaterialQuantities[itemId] || '';
+  }
+
+  function updateExtraMaterialQuantity(itemId: string, value: string) {
+    const onlyNumbers = value.replace(/\D/g, '');
+
+    setExtraMaterialQuantities((current) => ({
+      ...current,
+      [itemId]: onlyNumbers,
+    }));
+  }
+
+  function getExtraMaterialTotalUsed() {
+    return getExtraMaterialUsagesForSelectedDco().reduce(
+      (total, usage) => total + Number(usage.quantity || 0),
+      0,
+    );
+  }
+
+
+  function getExistingExtraMaterialUsageQuantity(itemId: string) {
+    return extraMaterialUsages
+      .filter(
+        (usage) =>
+          usage.itemId === itemId && isUsageInCurrentExtraMaterialContext(usage),
+      )
+      .reduce((total, usage) => total + Number(usage.quantity || 0), 0);
+  }
+
+  function getExtraMaterialAvailableForSave(stock: ExtraMaterialStockItem) {
+    if (isFormMaterialName(stock.item?.name)) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    return (
+      Number(stock.quantity || 0) +
+      getExistingExtraMaterialUsageQuantity(stock.itemId)
+    );
+  }
+
+  function getExtraMaterialRegistrationLabel() {
+    if (match?.extraMaterialUsed === true || getExtraMaterialUsagesForSelectedDco().length > 0) {
+      return `${getExtraMaterialTotalUsed()} unidade(s)`;
+    }
+
+    if (match?.extraMaterialUsed === false) {
+      return 'Sem registro de uso';
+    }
+
+    return 'Pendente';
+  }
+
   function applyOperationSummary(summary: OperationSummaryResponse) {
     setMatch(summary.match);
     setScales(summary.scales || []);
@@ -650,6 +868,28 @@ export default function MatchDetailsPage() {
     setOperationalLogs(summary.operationalLogs || []);
     setMatchKits(summary.matchKits || []);
     setMyKits(summary.myKits || []);
+    const nextExtraMaterialUsages = summary.extraMaterialUsages || [];
+    const nextExtraMaterialStocks = summary.myExtraMaterialStocks || [];
+
+    setExtraMaterialUsages(nextExtraMaterialUsages);
+
+    if (!isAdmin) {
+      setMyExtraMaterialStocks(nextExtraMaterialStocks);
+      syncExtraMaterialForm(
+        summary.match || null,
+        nextExtraMaterialUsages,
+        nextExtraMaterialStocks,
+      );
+    }
+
+    const defaultDcoId = (summary.scales || []).find(
+      (scale) => scale.role === 'DCO',
+    )?.official?.id;
+
+    if (isAdmin && defaultDcoId && !selectedExtraMaterialOfficialId) {
+      setSelectedExtraMaterialOfficialId(defaultDcoId);
+    }
+
     setSelectedKitIds([]);
   }
 
@@ -662,6 +902,33 @@ export default function MatchDetailsPage() {
       applyOperationSummary(response.data);
     } finally {
       setScalesLoaded(true);
+    }
+  }
+
+  async function loadExtraMaterialStocksForOfficial(officialId: string) {
+    if (!officialId) return;
+
+    try {
+      setLoadingExtraMaterialStocks(true);
+
+      const response = await api.get<ExtraMaterialStockItem[]>(
+        `/extra-materials/stocks/official/${officialId}`,
+      );
+      const nextStocks = response.data || [];
+      const nextUsages = extraMaterialUsages.filter(
+        (usage) => usage.officialId === officialId,
+      );
+
+      setMyExtraMaterialStocks(nextStocks);
+      syncExtraMaterialForm(match, nextUsages, nextStocks);
+    } catch (error: any) {
+      showMessage(
+        'Erro ao carregar estoque do DCO',
+        getErrorMessage(error, 'Erro ao carregar estoque de material do DCO.'),
+        'danger',
+      );
+    } finally {
+      setLoadingExtraMaterialStocks(false);
     }
   }
 
@@ -699,6 +966,22 @@ export default function MatchDetailsPage() {
       loadOperationSummary();
     }
   }, [matchId]);
+
+  useEffect(() => {
+    if (!isAdmin || selectedExtraMaterialOfficialId) return;
+
+    const defaultDcoId = scales.find((scale) => scale.role === 'DCO')?.official?.id;
+
+    if (defaultDcoId) {
+      setSelectedExtraMaterialOfficialId(defaultDcoId);
+    }
+  }, [isAdmin, scales, selectedExtraMaterialOfficialId]);
+
+  useEffect(() => {
+    if (!isAdmin || !selectedExtraMaterialOfficialId) return;
+
+    loadExtraMaterialStocksForOfficial(selectedExtraMaterialOfficialId);
+  }, [isAdmin, selectedExtraMaterialOfficialId, extraMaterialUsages.length, match?.id]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -823,6 +1106,20 @@ export default function MatchDetailsPage() {
   const hasDrawDone = draws.length > 0;
   const hasMatchKits = matchKits.length > 0;
   const canManageMatchKits = !!match && !isControlDone && isMatchInProgress && hasDrawDone;
+  const dcoScales = scales.filter((scale) => scale.role === 'DCO');
+  const selectedExtraMaterialUsages = getExtraMaterialUsagesForSelectedDco();
+  const hasExtraMaterialUsages = extraMaterialUsages.length > 0;
+  const hasSelectedExtraMaterialUsages = selectedExtraMaterialUsages.length > 0;
+  const hasExtraMaterialDecision =
+    match?.extraMaterialUsed === true || match?.extraMaterialUsed === false;
+  const canManageExtraMaterials = !!match && isMatchInProgress && hasDrawDone && hasMatchKits;
+  const canEditExtraMaterials =
+    canManageExtraMaterials &&
+    (!hasSelectedExtraMaterialUsages || isAdmin || editingExtraMaterials);
+  const isExtraMaterialRegistrationLocked =
+    hasSelectedExtraMaterialUsages && !isAdmin && !editingExtraMaterials;
+  const canDcoEditExtraMaterials =
+    hasSelectedExtraMaterialUsages && !isAdmin && match?.status === 'IN_PROGRESS';
 
   const savedDrawPlayers = draws.flatMap((draw) => draw.players);
 
@@ -873,7 +1170,8 @@ export default function MatchDetailsPage() {
     !isControlDone &&
     isMatchInProgress &&
     hasDrawDone &&
-    hasMatchKits;
+    hasMatchKits &&
+    hasExtraMaterialUsages;
 
   const canUploadAthleteListFile =
     !!match &&
@@ -938,6 +1236,8 @@ export default function MatchDetailsPage() {
       const nextOperationalLogs = summary.operationalLogs || [];
       const nextMatchKits = summary.matchKits || [];
       const nextMyKits = summary.myKits || [];
+      const nextExtraMaterialUsages = summary.extraMaterialUsages || [];
+      const nextMyExtraMaterialStocks = summary.myExtraMaterialStocks || [];
 
       const nextSnapshot = getOperationalSnapshot({
         matchStatus: nextMatch?.status,
@@ -987,6 +1287,9 @@ export default function MatchDetailsPage() {
       setOperationalLogs(nextOperationalLogs);
       setMatchKits(nextMatchKits);
       setMyKits(nextMyKits);
+      setExtraMaterialUsages(nextExtraMaterialUsages);
+      setMyExtraMaterialStocks(nextMyExtraMaterialStocks);
+      syncExtraMaterialForm(nextMatch || null, nextExtraMaterialUsages);
       setSelectedKitIds([]);
       setScalesLoaded(true);
 
@@ -1087,7 +1390,7 @@ export default function MatchDetailsPage() {
   }
 
   function updateDrawForm(field: keyof DrawForm, value: string) {
-    if (isControlDone || hasDrawDone) return;
+    if (isControlDone || (hasDrawDone && !editingDraw)) return;
 
     setDrawForm((prev) => ({
       ...prev,
@@ -1251,6 +1554,188 @@ export default function MatchDetailsPage() {
           showMessage('Kit removido', 'Registro de kit utilizado removido com sucesso.', 'success');
         } catch (error: any) {
           showMessage('Erro ao remover kit', getErrorMessage(error, 'Erro ao remover kit utilizado da partida.'), 'danger');
+        }
+      },
+    });
+  }
+
+
+  async function handleSaveExtraMaterials() {
+    if (!match || !isMatchInProgress || !hasDrawDone || !hasMatchKits) {
+      showMessage(
+        'Registro indisponível',
+        'O registro de material utilizado será liberado após o jogo estar em andamento, com sorteio e kits utilizados registrados.',
+        'warning',
+      );
+      return;
+    }
+
+    if (isExtraMaterialRegistrationLocked) {
+      showMessage(
+        'Material já registrado',
+        'O material utilizado já foi salvo e ficou bloqueado para o usuário. Solicite alteração para um administrador, se necessário.',
+        'warning',
+      );
+      return;
+    }
+
+    if (isAdmin && !selectedExtraMaterialOfficialId) {
+      showMessage(
+        'Selecione o DCO',
+        'Selecione o DCO responsável pela baixa do material utilizado no jogo.',
+        'warning',
+      );
+      return;
+    }
+
+    const collectorStock = myExtraMaterialStocks.find((stock) =>
+      isCollectorMaterialName(stock.item?.name),
+    );
+
+    if (!collectorStock) {
+      showMessage(
+        'Copo coletor obrigatório',
+        'Cadastre o item Copo coletor em Material Extra antes de registrar o material utilizado no jogo.',
+        'warning',
+      );
+      return;
+    }
+
+    const collectorAvailable = getExtraMaterialAvailableForSave(collectorStock);
+    const extraCollectorQuantity =
+      extraMaterialUseOption === 'YES'
+        ? Number(extraMaterialQuantities[collectorStock.itemId] || 0)
+        : 0;
+    const collectorQuantity =
+      REQUIRED_COLLECTOR_USAGE_QUANTITY + extraCollectorQuantity;
+
+    if (
+      !Number.isInteger(extraCollectorQuantity) ||
+      extraCollectorQuantity < 0
+    ) {
+      showMessage(
+        'Quantidade inválida',
+        'Informe uma quantidade válida de copos coletores extras.',
+        'warning',
+      );
+      return;
+    }
+
+    if (collectorAvailable < collectorQuantity) {
+      showMessage(
+        'Estoque insuficiente',
+        `Você informou ${collectorQuantity} copo(s) coletor(es), mas existem ${collectorAvailable} unidade(s) disponível(is) com este DCO considerando o que já foi registrado neste jogo.`,
+        'warning',
+      );
+      return;
+    }
+
+    const items = myExtraMaterialStocks
+      .map((stock) => {
+        const isCollector = isCollectorMaterialName(stock.item?.name);
+
+        const quantity = isCollector
+          ? collectorQuantity
+          : extraMaterialUseOption === 'YES'
+            ? Number(extraMaterialQuantities[stock.itemId] || 0)
+            : 0;
+
+        return {
+          itemId: stock.itemId,
+          quantity,
+        };
+      })
+      .filter((item) => Number.isInteger(item.quantity) && item.quantity > 0);
+
+    const invalidStock = items.find((item) => {
+      const stock = myExtraMaterialStocks.find(
+        (current) => current.itemId === item.itemId,
+      );
+
+      if (!stock) return true;
+
+      if (isFormMaterialName(stock.item?.name)) {
+        return false;
+      }
+
+      return item.quantity > getExtraMaterialAvailableForSave(stock);
+    });
+
+    if (invalidStock) {
+      const stock = myExtraMaterialStocks.find(
+        (current) => current.itemId === invalidStock.itemId,
+      );
+      const availableQuantity = stock
+        ? getExtraMaterialAvailableForSave(stock)
+        : 0;
+
+      showMessage(
+        'Quantidade indisponível',
+        `Você possui ${availableQuantity} unidade(s) de ${stock?.item?.name || 'material selecionado'} com este DCO considerando o que já foi registrado neste jogo.`,
+        'warning',
+      );
+      return;
+    }
+
+    try {
+      setSavingExtraMaterials(true);
+
+      await api.post(`/extra-materials/matches/${matchId}/usages`, {
+        used: true,
+        officialId: isAdmin ? selectedExtraMaterialOfficialId : undefined,
+        notes:
+          extraMaterialUseOption === 'YES'
+            ? extraMaterialNotes.trim() || undefined
+            : undefined,
+        items,
+      });
+
+      await refreshOperationData({ silent: true });
+      setEditingExtraMaterials(false);
+
+      showMessage(
+        editingExtraMaterials ? 'Material utilizado atualizado' : 'Material utilizado registrado',
+        extraMaterialUseOption === 'YES'
+          ? 'Os copos coletores e os materiais extras utilizados foram salvos e o estoque do DCO foi atualizado.'
+          : `Os ${REQUIRED_COLLECTOR_USAGE_QUANTITY} copos coletores obrigatórios foram salvos e o estoque do DCO foi atualizado.`,
+        'success',
+      );
+    } catch (error: any) {
+      showMessage(
+        'Erro ao registrar material utilizado',
+        getErrorMessage(error, 'Erro ao registrar material utilizado.'),
+        'danger',
+      );
+    } finally {
+      setSavingExtraMaterials(false);
+    }
+  }
+
+  async function handleRemoveExtraMaterialUsage(usage: ExtraMaterialUsageItem) {
+    showConfirm({
+      title: 'Remover material extra',
+      message: `Deseja remover o registro de ${usage.quantity} unidade(s) de ${usage.item.name}? A quantidade voltará para o estoque do DCO.`,
+      variant: 'danger',
+      confirmText: 'Remover',
+      onConfirm: async () => {
+        try {
+          await api.delete(
+            `/extra-materials/matches/${matchId}/usages/${usage.id}`,
+          );
+
+          await refreshOperationData({ silent: true });
+
+          showMessage(
+            'Material extra removido',
+            'Registro removido com sucesso.',
+            'success',
+          );
+        } catch (error: any) {
+          showMessage(
+            'Erro ao remover material extra',
+            getErrorMessage(error, 'Erro ao remover material extra.'),
+            'danger',
+          );
         }
       },
     });
@@ -1615,6 +2100,11 @@ export default function MatchDetailsPage() {
         return;
       }
 
+      if (status === 'CONTROL_DONE' && extraMaterialUsages.length === 0) {
+        showMessage('Material obrigatório', 'Antes de finalizar o controle, registre o material utilizado no jogo.', 'warning');
+        return;
+      }
+
       let location:
         | {
             latitude: number;
@@ -1880,14 +2370,50 @@ export default function MatchDetailsPage() {
     setDrawnPlayers((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   }
 
+  function startDrawEdit() {
+    if (!isMatchInProgress || isControlDone || !hasDrawDone) return;
+
+    const homeExam = getSavedDrawPlayer('HOME', 'EXAME');
+    const homeReserve = getSavedDrawPlayer('HOME', 'RESERVA');
+    const awayExam = getSavedDrawPlayer('AWAY', 'EXAME');
+    const awayReserve = getSavedDrawPlayer('AWAY', 'RESERVA');
+
+    setDrawForm({
+      homeExamNumber: homeExam?.number || '',
+      homeExamName: homeExam?.name || '',
+      homeReserveNumber: homeReserve?.number || '',
+      homeReserveName: homeReserve?.name || '',
+      awayExamNumber: awayExam?.number || '',
+      awayExamName: awayExam?.name || '',
+      awayReserveNumber: awayReserve?.number || '',
+      awayReserveName: awayReserve?.name || '',
+    });
+
+    setEditingDraw(true);
+  }
+
+  function cancelDrawEdit() {
+    setEditingDraw(false);
+    setDrawForm({
+      homeExamNumber: '',
+      homeExamName: '',
+      homeReserveNumber: '',
+      homeReserveName: '',
+      awayExamNumber: '',
+      awayExamName: '',
+      awayReserveNumber: '',
+      awayReserveName: '',
+    });
+  }
+
   async function saveDraw() {
     if (isControlDone) {
       showMessage('Controle bloqueado', 'Controle já realizado. Não é possível alterar informações.', 'warning');
       return;
     }
 
-    if (hasDrawDone) {
-      showMessage('Sorteio já realizado', 'Sorteio já realizado para este jogo.', 'warning');
+    if (hasDrawDone && !editingDraw) {
+      showMessage('Sorteio já realizado', 'Clique em Alterar sorteio para editar os atletas.', 'warning');
       return;
     }
 
@@ -1956,14 +2482,20 @@ export default function MatchDetailsPage() {
     }
 
     try {
-      await api.post('/draws', {
-        matchId,
-        players,
-      });
+      if (editingDraw) {
+        await api.patch(`/draws/matches/${matchId}`, {
+          players,
+        });
+      } else {
+        await api.post('/draws', {
+          matchId,
+          players,
+        });
 
-      await api.post(`/matches/${matchId}/operational-logs`, {
-        step: 'DRAW_DONE',
-      });
+        await api.post(`/matches/${matchId}/operational-logs`, {
+          step: 'DRAW_DONE',
+        });
+      }
 
       setDrawForm({
         homeExamNumber: '',
@@ -1977,10 +2509,17 @@ export default function MatchDetailsPage() {
       });
 
       setDrawnPlayers([]);
+      setEditingDraw(false);
 
       await refreshOperationData({ silent: true });
 
-      showMessage('Sorteio salvo', 'Sorteio realizado com sucesso!', 'success');
+      showMessage(
+        editingDraw ? 'Sorteio atualizado' : 'Sorteio salvo',
+        editingDraw
+          ? 'Sorteio alterado com sucesso!'
+          : 'Sorteio realizado com sucesso!',
+        'success',
+      );
     } catch (error: any) {
       showMessage('Erro ao salvar sorteio', getErrorMessage(error, 'Erro ao salvar sorteio dos atletas'), 'danger');
     }
@@ -2184,6 +2723,18 @@ function formatTimeOnly(date: string) {
                         Missão {userRole === 'OFFICIAL' ? '**********' : match.missionCode}
                       </span>
                     )}
+
+                    {hasMissionOrder(match) && (
+                      <span
+                        className={`rounded-2xl border px-4 py-2 text-xs font-black ${
+                          hasComplementaryMissionOrderAnalysis(match)
+                            ? 'border-yellow-200 bg-yellow-50 text-yellow-800'
+                            : 'border-green-100 bg-green-50 text-green-800'
+                        }`}
+                      >
+                        🧪 Análises: {getMissionOrderAnalysisDisplay(match)}
+                      </span>
+                    )}
                   </div>
 
                                   </div>
@@ -2208,6 +2759,42 @@ function formatTimeOnly(date: string) {
             </div>
           </div>
         </header>
+
+        {hasMissionOrder(match) && (
+          <div className="px-4 pb-4 lg:px-8" data-section="analises-card-topo">
+            <div
+              className={`rounded-3xl border p-5 shadow-sm lg:p-6 ${
+                hasComplementaryMissionOrderAnalysis(match)
+                  ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
+                  : 'border-green-200 bg-green-50 text-green-900'
+              }`}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em]">
+                    Análises da ordem de missão
+                  </p>
+
+                  <h2 className="mt-2 text-xl font-black">
+                    Análises complementares = {getMissionOrderAnalysisDisplay(match)}
+                  </h2>
+
+                  <p className="mt-2 text-sm font-semibold leading-6">
+                    {hasComplementaryMissionOrderAnalysis(match)
+                      ? 'Atenção: esta ordem indica análise complementar. Preencha essa informação no formulário do controle.'
+                      : 'A ordem indica somente urina. Não foi identificada análise complementar no arquivo.'}
+                  </p>
+                </div>
+
+                <span className="w-fit rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-black">
+                  {hasComplementaryMissionOrderAnalysis(match)
+                    ? 'Com complementar'
+                    : 'Somente urina'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {isControlDone && (
           <div className="px-4 pb-4 lg:px-8">
@@ -2802,8 +3389,64 @@ function formatTimeOnly(date: string) {
                     </button>
                   )}
 
-                  {(isMatchInProgress || substitutions.length > 0 || isControlDone) && (
-                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+
+
+                  {!isCheckedIn && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      {isScaleAccepted
+                        ? 'Aguardando check-in no estádio.'
+                        : 'Aguardando confirmação da escala pelos oficiais.'}
+                    </p>
+                  )}
+
+                  {isCheckedIn && !hasRoomInspection && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando inspeção da sala para liberar o jogo em andamento.
+                    </p>
+                  )}
+
+                  {isCheckedIn && hasRoomInspection && !hasMissionCode && !isControlDone && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Aguardando confirmação do código da missão para liberar o jogo em andamento.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    substitutions.length > 0
+                      ? 'bg-green-50 border-green-200'
+                      : isMatchInProgress
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-black text-[var(--cdb-dark)]">
+                          6. Registrar substituições
+                        </p>
+
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                          Opcional
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Registre as substituições ocorridas durante a partida, caso existam.
+                      </p>
+                    </div>
+
+                    {substitutions.length > 0 && (
+                      <span className="shrink-0 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                        Registrado
+                      </span>
+                    )}
+                  </div>
+
+                  {(isMatchInProgress || substitutions.length > 0 || isControlDone) ? (
+                    <div className="mt-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -3024,25 +3667,9 @@ function formatTimeOnly(date: string) {
                         </p>
                       )}
                     </div>
-                  )}
-
-                  {!isCheckedIn && !isControlDone && (
+                  ) : (
                     <p className="mt-4 text-xs text-slate-500">
-                      {isScaleAccepted
-                        ? 'Aguardando check-in no estádio.'
-                        : 'Aguardando confirmação da escala pelos oficiais.'}
-                    </p>
-                  )}
-
-                  {isCheckedIn && !hasRoomInspection && !isControlDone && (
-                    <p className="mt-4 text-xs text-slate-500">
-                      Aguardando inspeção da sala para liberar o jogo em andamento.
-                    </p>
-                  )}
-
-                  {isCheckedIn && hasRoomInspection && !hasMissionCode && !isControlDone && (
-                    <p className="mt-4 text-xs text-slate-500">
-                      Aguardando confirmação do código da missão para liberar o jogo em andamento.
+                      Disponível quando o jogo estiver em andamento.
                     </p>
                   )}
                 </div>
@@ -3059,7 +3686,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        6. Sorteio realizado
+                        7. Sorteio realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -3080,7 +3707,7 @@ function formatTimeOnly(date: string) {
 
                   {renderOperationalLog('DRAW_DONE')}
 
-                  {hasDrawDone && (
+                  {hasDrawDone && !editingDraw && (
                     <div className="mt-4 rounded-2xl border border-green-100 bg-white p-4">
                       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -3093,9 +3720,21 @@ function formatTimeOnly(date: string) {
                           </p>
                         </div>
 
-                        <span className="w-fit rounded-full border border-green-200 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                          Salvo
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="w-fit rounded-full border border-green-200 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                            Salvo
+                          </span>
+
+                          {isMatchInProgress && !isControlDone && !editingDraw && (
+                            <button
+                              type="button"
+                              onClick={startDrawEdit}
+                              className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
+                            >
+                              ✏️ Alterar sorteio
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -3146,7 +3785,7 @@ function formatTimeOnly(date: string) {
                     </div>
                   )}
 
-                  {!hasDrawDone && isMatchInProgress && !isControlDone && (
+                  {(!hasDrawDone || editingDraw) && isMatchInProgress && !isControlDone && (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:p-5">
@@ -3342,24 +3981,43 @@ function formatTimeOnly(date: string) {
 
                   <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <p className="text-sm text-slate-500">
-                      Após salvar, o sorteio será exibido em Informações da partida e esta área ficará oculta.
+                      {editingDraw
+                        ? 'Revise os atletas e salve as alterações do sorteio.'
+                        : 'Após salvar, o sorteio será exibido em Informações da partida.'}
                     </p>
-  
-                    <button
-                      type="button"
-                      disabled={isControlDone || isAnyActionLoading}
-                      onClick={() => runExclusiveAction('save-draw', saveDraw)}
-                      className="rounded-2xl bg-green-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                    >
-                      {actionLoading === 'save-draw'
-                        ? 'Salvando sorteio...'
-                        : 'Salvar sorteio'}
-                    </button>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      {editingDraw && (
+                        <button
+                          type="button"
+                          disabled={isAnyActionLoading}
+                          onClick={cancelDrawEdit}
+                          className="rounded-2xl border border-slate-200 bg-white px-5 py-3 font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Cancelar alteração
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isControlDone || isAnyActionLoading}
+                        onClick={() => runExclusiveAction('save-draw', saveDraw)}
+                        className="rounded-2xl bg-green-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {actionLoading === 'save-draw'
+                          ? editingDraw
+                            ? 'Salvando alterações...'
+                            : 'Salvando sorteio...'
+                          : editingDraw
+                            ? 'Salvar alterações'
+                            : 'Salvar sorteio'}
+                      </button>
+                    </div>
                   </div>
                     </div>
                   )}
 
-                  {!hasDrawDone && isMatchInProgress && !isControlDone && (
+                  {!hasDrawDone && !editingDraw && isMatchInProgress && !isControlDone && (
                     <p className="mt-4 text-xs text-purple-700">
                       Após salvar os atletas sorteados, esta etapa ficará como sorteio realizado.
                     </p>
@@ -3384,7 +4042,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        7. Kits utilizados no controle
+                        8. Kits utilizados no controle
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -3500,6 +4158,387 @@ function formatTimeOnly(date: string) {
 
                 <div
                   className={`rounded-2xl border p-4 ${
+                    hasExtraMaterialDecision || hasExtraMaterialUsages
+                      ? 'bg-green-50 border-green-200'
+                      : canManageExtraMaterials
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cdb-dark)]">
+                        9. Material extra utilizado no jogo
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Registre somente os materiais extras utilizados. Os 2 copos coletores obrigatórios são contabilizados automaticamente.
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                      {canDcoEditExtraMaterials && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            syncExtraMaterialForm(
+                              match,
+                              selectedExtraMaterialUsages,
+                              myExtraMaterialStocks,
+                            );
+                            setEditingExtraMaterials(true);
+                          }}
+                          disabled={isAnyActionLoading}
+                          className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          ✏️ Alterar material
+                        </button>
+                      )}
+
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          hasExtraMaterialDecision || hasExtraMaterialUsages
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {getExtraMaterialRegistrationLabel()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedExtraMaterialUsages.some((usage) =>
+                    isCollectorMaterialName(usage.item?.name)
+                      ? Number(usage.quantity || 0) > REQUIRED_COLLECTOR_USAGE_QUANTITY
+                      : Number(usage.quantity || 0) > 0,
+                  ) && (
+                    <div className="mt-4 space-y-2">
+                      {selectedExtraMaterialUsages
+                        .map((usage) => {
+                          const isCollector = isCollectorMaterialName(usage.item?.name);
+                          const visibleQuantity = isCollector
+                            ? Math.max(0, Number(usage.quantity || 0) - REQUIRED_COLLECTOR_USAGE_QUANTITY)
+                            : Number(usage.quantity || 0);
+
+                          if (visibleQuantity <= 0) return null;
+
+                          return (
+                            <div
+                              key={usage.id}
+                              className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                            >
+                              <div>
+                                <p className="text-sm font-black text-slate-900">
+                                  {isCollector ? 'Copos coletores extras' : usage.item.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {visibleQuantity} unidade(s)
+                                  {usage.official?.user?.name
+                                    ? ` · DCO ${usage.official.user.name}`
+                                    : ''}
+                                </p>
+                              </div>
+
+                              {isAdmin && !isCollector && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveExtraMaterialUsage(usage)}
+                                  disabled={isAnyActionLoading}
+                                  className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Remover
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {match?.extraMaterialUsed === false && selectedExtraMaterialUsages.length === 0 && (
+                    <div className="mt-4 rounded-2xl border border-green-100 bg-white p-4 text-sm font-semibold text-green-700">
+                      Registro antigo indicando que não houve uso. Atualize este item para registrar os 2 copos coletores obrigatórios.
+                    </div>
+                  )}
+
+                  {isExtraMaterialRegistrationLocked && (
+                    <div className="mt-4 rounded-2xl border border-green-100 bg-white p-4 text-sm text-green-700">
+                      <p className="font-black">Material extra utilizado salvo</p>
+                      <p className="mt-1">
+                        Enquanto o jogo estiver em andamento, o DCO pode corrigir as quantidades registradas pelo botão no topo.
+                      </p>
+                    </div>
+                  )}
+
+                  {canEditExtraMaterials && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-sm font-black text-slate-900">
+                          Foi utilizado material extra no jogo?
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          Se selecionar Não, nenhum material extra será registrado. Os 2 copos obrigatórios continuarão sendo contabilizados automaticamente.
+                        </p>
+
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setExtraMaterialUseOption('NO')}
+                            disabled={isAnyActionLoading}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${
+                              extraMaterialUseOption === 'NO'
+                                ? 'border-green-300 bg-green-50 text-green-700'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                            } disabled:cursor-not-allowed disabled:opacity-60`}
+                          >
+                            Não
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExtraMaterialUseOption('YES');
+
+                              const collectorStock = myExtraMaterialStocks.find((stock) =>
+                                isCollectorMaterialName(stock.item?.name),
+                              );
+
+                              if (collectorStock) {
+                                setExtraMaterialQuantities((current) => ({
+                                  ...current,
+                                  [collectorStock.itemId]:
+                                    current[collectorStock.itemId] || '0',
+                                }));
+                              }
+                            }}
+                            disabled={isAnyActionLoading}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${
+                              extraMaterialUseOption === 'YES'
+                                ? 'border-blue-300 bg-blue-50 text-[var(--cdb-blue)]'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                            } disabled:cursor-not-allowed disabled:opacity-60`}
+                          >
+                            Sim
+                          </button>
+                        </div>
+                      </div>
+
+                      {isAdmin && (
+                        <div className="mt-4">
+                          <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                            DCO para baixa do material
+                          </label>
+                          <select
+                            value={selectedExtraMaterialOfficialId}
+                            onChange={(event) =>
+                              setSelectedExtraMaterialOfficialId(event.target.value)
+                            }
+                            disabled={isAnyActionLoading}
+                            className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                          >
+                            <option value="">Selecione um DCO</option>
+                            {dcoScales.map((scale) => (
+                              <option key={scale.official.id} value={scale.official.id}>
+                                {scale.official.user.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-xs text-slate-500">
+                            A baixa dos copos e dos demais materiais controlados será feita no estoque do DCO selecionado.
+                          </p>
+                        </div>
+                      )}
+
+                      {extraMaterialUseOption === 'NO' ? (
+                        <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4">
+                          <p className="text-sm font-black text-green-800">
+                            Nenhum material extra utilizado
+                          </p>
+
+                          <p className="mt-1 text-xs text-green-700">
+                            Ao salvar, nenhum material extra será informado. O sistema continuará contabilizando automaticamente os {REQUIRED_COLLECTOR_USAGE_QUANTITY} copos coletores obrigatórios.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                            <p className="font-black">Informe os materiais utilizados</p>
+                            <p className="mt-1">
+                              Informe somente os materiais extras realmente utilizados. Para copos, digite apenas a quantidade adicional além dos 2 obrigatórios.
+                            </p>
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            {isAdmin && !selectedExtraMaterialOfficialId ? (
+                              <p className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
+                                Selecione um DCO para visualizar os materiais disponíveis para baixa.
+                              </p>
+                            ) : loadingExtraMaterialStocks ? (
+                              <p className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+                                Carregando materiais do DCO selecionado...
+                              </p>
+                            ) : myExtraMaterialStocks.length === 0 ? (
+                              <p className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
+                                Nenhum material cadastrado. Cadastre os materiais em Material Extra antes de registrar o uso no jogo.
+                              </p>
+                            ) : (
+                              myExtraMaterialStocks.map((stock) => {
+                                const isCollector = isCollectorMaterialName(stock.item?.name);
+                                const isFormMaterial = isFormMaterialName(stock.item?.name);
+                                const alreadyUsed = getExistingExtraMaterialUsageQuantity(stock.itemId);
+                                const availableToUse = getExtraMaterialAvailableForSave(stock);
+                                const hasInsufficientCollector =
+                                  isCollector && availableToUse < REQUIRED_COLLECTOR_USAGE_QUANTITY;
+
+                                return (
+                                  <div
+                                    key={stock.id}
+                                    className={`grid gap-3 rounded-2xl border p-4 sm:grid-cols-[1fr_140px] sm:items-center ${
+                                      hasInsufficientCollector
+                                        ? 'border-red-200 bg-red-50'
+                                        : isCollector
+                                          ? 'border-blue-200 bg-blue-50'
+                                          : 'border-slate-200 bg-slate-50'
+                                    }`}
+                                  >
+                                    <div>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-black text-slate-900">
+                                          {isCollector ? 'Copos coletores extras' : stock.item.name}
+                                        </p>
+
+                                        {isCollector && (
+                                          <span className="rounded-full bg-white px-2 py-1 text-[11px] font-black text-[var(--cdb-blue)] ring-1 ring-blue-100">
+                                            2 obrigatórios já inclusos
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {isFormMaterial
+                                          ? 'Sem controle de estoque · informe somente a quantidade utilizada neste jogo'
+                                          : isCollector
+                                            ? `Disponível com o DCO: ${stock.quantity} unidade(s) · os 2 obrigatórios são somados automaticamente${
+                                                alreadyUsed > 0
+                                                  ? ` · total já registrado neste jogo: ${alreadyUsed}`
+                                                  : ''
+                                              }`
+                                            : `Disponível com o DCO: ${stock.quantity} unidade(s)${
+                                                alreadyUsed > 0
+                                                  ? ` · já registrado neste jogo: ${alreadyUsed}`
+                                                  : ''
+                                              }`}
+                                      </p>
+
+                                      {isCollector && (
+                                        <p className={`mt-1 text-xs font-bold ${hasInsufficientCollector ? 'text-red-700' : 'text-blue-700'}`}>
+                                          Digite apenas quantos copos foram usados além dos {REQUIRED_COLLECTOR_USAGE_QUANTITY} obrigatórios.
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        {isCollector ? 'Qtd. extra' : 'Qtd. usada'}
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={
+                                          isFormMaterial
+                                            ? undefined
+                                            : isCollector
+                                              ? Math.max(0, availableToUse - REQUIRED_COLLECTOR_USAGE_QUANTITY)
+                                              : availableToUse
+                                        }
+                                        value={getExtraMaterialQuantity(stock.itemId)}
+                                        onChange={(event) => {
+                                          const nextValue = event.target.value.replace(/\D/g, '');
+
+                                          updateExtraMaterialQuantity(
+                                            stock.itemId,
+                                            nextValue,
+                                          );
+                                        }}
+                                        disabled={
+                                          isAnyActionLoading ||
+                                          (!isFormMaterial && availableToUse <= 0)
+                                        }
+                                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          <label className="mt-4 block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                            Observação
+                          </label>
+
+                          <textarea
+                            value={extraMaterialNotes}
+                            onChange={(event) => setExtraMaterialNotes(event.target.value)}
+                            placeholder="Campo opcional. Exemplo: fita parcial, formulários ou outros materiais utilizados."
+                            rows={3}
+                            maxLength={1500}
+                            disabled={isAnyActionLoading}
+                            className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                          />
+                        </>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runExclusiveAction(
+                            'extra-materials',
+                            handleSaveExtraMaterials,
+                          )
+                        }
+                        disabled={savingExtraMaterials || isAnyActionLoading}
+                        className="mt-4 w-full rounded-2xl bg-[var(--cdb-blue)] py-3 font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {actionLoading === 'extra-materials' || savingExtraMaterials
+                          ? 'Salvando material extra...'
+                          : editingExtraMaterials
+                            ? 'Salvar alterações'
+                            : extraMaterialUseOption === 'NO'
+                              ? 'Registrar sem material extra'
+                              : 'Salvar material extra'}
+                      </button>
+
+                      {editingExtraMaterials && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingExtraMaterials(false);
+                            syncExtraMaterialForm(
+                              match,
+                              selectedExtraMaterialUsages,
+                              myExtraMaterialStocks,
+                            );
+                          }}
+                          disabled={isAnyActionLoading}
+                          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Cancelar alteração
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {!canManageExtraMaterials && (
+                    <p className="mt-4 text-xs text-slate-500">
+                      Esse registro será liberado após o jogo estar em andamento, com sorteio e kits utilizados registrados.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  className={`rounded-2xl border p-4 ${
                     isControlDone
                       ? 'bg-green-50 border-green-200'
                       : canFinishControl
@@ -3510,7 +4549,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        8. Controle realizado
+                        10. Controle realizado
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -3566,7 +4605,7 @@ function formatTimeOnly(date: string) {
 
                   {!canFinishControl && !isControlDone && (
                     <p className="mt-4 text-xs text-slate-500">
-                      Aguardando jogo em andamento, sorteio realizado e kits utilizados registrados.
+                      Aguardando jogo em andamento, sorteio, kits utilizados e material utilizado registrados.
                     </p>
                   )}
                 </div>
@@ -3583,7 +4622,7 @@ function formatTimeOnly(date: string) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cdb-dark)]">
-                        9. Documentos do jogo
+                        11. Documentos do jogo
                       </p>
 
                       <p className="text-xs text-slate-500 mt-1">
@@ -3662,7 +4701,7 @@ function formatTimeOnly(date: string) {
 
                 {isControlDone && (
                   <div className="bg-green-50 border border-green-200 text-green-700 rounded-2xl p-4 text-sm">
-                    Controle já realizado. Informações operacionais bloqueadas.
+                    Controle já realizado. Informações operacionais principais bloqueadas.
                   </div>
                 )}
               </div>

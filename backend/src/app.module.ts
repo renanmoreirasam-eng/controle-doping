@@ -18,6 +18,7 @@ import { AdminTasksModule } from './admin-tasks/admin-tasks.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PushLogsModule } from './push-logs/push-logs.module';
 import { ReportsModule } from './reports/reports.module';
+import { ExtraMaterialsModule } from './extra-materials/extra-materials.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ReportsModule } from './reports/reports.module';
     DashboardModule,
     PushLogsModule,
     ReportsModule,
+    ExtraMaterialsModule,
   ],
 })
 export class AppModule {}

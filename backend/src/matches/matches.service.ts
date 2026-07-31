@@ -20,12 +20,40 @@ type MatchDocumentType =
   | 'athlete-list'
   | 'final-document';
 
+const DEFAULT_MISSION_ORDER_ANALYSIS = 'Urine';
+
 @Injectable()
 export class MatchesService {
   constructor(
     private prisma: PrismaService,
     private pushService: PushService,
   ) {}
+
+  private normalizeMissionOrderAnalysis(value?: string | null) {
+    const normalizedValue = String(value || '').trim();
+
+    return normalizedValue || null;
+  }
+
+  private getMissionOrderAnalysisForCreate(data: {
+    missionOrderAnalysis?: string | null;
+    missionOrderFileName?: string | null;
+    missionOrderFileData?: string | null;
+  }) {
+    const normalizedAnalysis = this.normalizeMissionOrderAnalysis(
+      data.missionOrderAnalysis,
+    );
+
+    if (normalizedAnalysis) {
+      return normalizedAnalysis;
+    }
+
+    const hasMissionOrder =
+      Boolean(data.missionOrderFileName) ||
+      Boolean(data.missionOrderFileData);
+
+    return hasMissionOrder ? DEFAULT_MISSION_ORDER_ANALYSIS : null;
+  }
 
   private includeRelations = {
     championship: true,
@@ -57,6 +85,13 @@ export class MatchesService {
     matchDate: true,
     status: true,
     missionCode: true,
+    missionOrderAnalysis: true,
+    extraMaterialUsed: true,
+    extraMaterialNotes: true,
+    extraMaterialRegisteredAt: true,
+    extraMaterialRegisteredById: true,
+    extraMaterialRegisteredByName: true,
+    extraMaterialRegisteredByEmail: true,
     matchNumber: true,
     roundOrPhase: true,
     missionOrderFileName: true,
@@ -227,6 +262,7 @@ export class MatchesService {
     homeTeam: string;
     awayTeam: string;
     missionCode?: string;
+    missionOrderAnalysis?: string | null;
     matchNumber?: string;
     roundOrPhase?: string;
     missionOrderFileName?: string | null;
@@ -253,6 +289,7 @@ export class MatchesService {
         homeTeam: data.homeTeam,
         awayTeam: data.awayTeam,
         missionCode: data.missionCode?.trim() || null,
+        missionOrderAnalysis: this.getMissionOrderAnalysisForCreate(data),
         matchNumber: data.matchNumber?.trim() || null,
         roundOrPhase: data.roundOrPhase?.trim() || null,
         missionOrderFileName: data.missionOrderFileName || null,
@@ -294,6 +331,7 @@ export class MatchesService {
       homeTeam?: string;
       awayTeam?: string;
       missionCode?: string;
+      missionOrderAnalysis?: string | null;
       matchNumber?: string;
       roundOrPhase?: string;
       missionOrderFileName?: string | null;
@@ -358,6 +396,10 @@ export class MatchesService {
         homeTeam: data.homeTeam,
         awayTeam: data.awayTeam,
         missionCode: data.missionCode !== undefined ? data.missionCode?.trim() || null : undefined,
+        missionOrderAnalysis:
+          data.missionOrderAnalysis !== undefined
+            ? this.normalizeMissionOrderAnalysis(data.missionOrderAnalysis)
+            : undefined,
         matchNumber: data.matchNumber !== undefined ? data.matchNumber?.trim() || null : undefined,
         roundOrPhase: data.roundOrPhase !== undefined ? data.roundOrPhase?.trim() || null : undefined,
         missionOrderFileName: data.missionOrderFileName !== undefined ? data.missionOrderFileName || null : undefined,
@@ -461,6 +503,20 @@ export class MatchesService {
       throw new BadRequestException(
         'Controle já realizado. Não é possível alterar esta operação.',
       );
+    }
+
+    if (status === 'CONTROL_DONE') {
+      const extraMaterialUsageCount = await this.prisma.extraMaterialUsage.count({
+        where: {
+          matchId: id,
+        },
+      });
+
+      if (extraMaterialUsageCount === 0) {
+        throw new BadRequestException(
+          'Antes de finalizar o controle, registre o material utilizado no jogo.',
+        );
+      }
     }
 
     const stepByStatus: Partial<Record<MatchStatus, OperationalStep>> = {
@@ -600,6 +656,8 @@ export class MatchesService {
       operationalLogs,
       matchKits,
       myKits,
+      extraMaterialUsages,
+      myExtraMaterialStocks,
     ] = await Promise.all([
       this.prisma.match.findUnique({
         where: { id },
@@ -678,6 +736,48 @@ export class MatchesService {
             },
           })
         : Promise.resolve([]),
+      this.prisma.extraMaterialUsage.findMany({
+        where: { matchId: id },
+        include: {
+          item: true,
+          official: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [
+          {
+            item: {
+              name: 'asc',
+            },
+          },
+        ],
+      }),
+      currentOfficial
+        ? this.prisma.extraMaterialItem.findMany({
+            where: {
+              active: true,
+            },
+            include: {
+              stocks: {
+                where: {
+                  officialId: currentOfficial.id,
+                },
+                take: 1,
+              },
+            },
+            orderBy: {
+              name: 'asc',
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
     if (!match) {
@@ -696,6 +796,23 @@ export class MatchesService {
       operationalLogs,
       matchKits,
       myKits,
+      extraMaterialUsages,
+      myExtraMaterialStocks: currentOfficial
+        ? myExtraMaterialStocks.map((item: any) => {
+            const stock = item.stocks?.[0];
+
+            return {
+              id: stock?.id || `${item.id}-${currentOfficial.id}`,
+              itemId: item.id,
+              quantity: Number(stock?.quantity || 0),
+              item: {
+                id: item.id,
+                name: item.name,
+                active: item.active,
+              },
+            };
+          })
+        : [],
     };
   }
 

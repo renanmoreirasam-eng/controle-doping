@@ -28,6 +28,7 @@ type Match = {
 type Official = {
   id: string;
   active: boolean;
+  operationalRole?: string | null;
   user: {
     id?: string;
     name: string;
@@ -60,6 +61,7 @@ type Pagination = {
   hasNextPage: boolean;
 };
 
+
 type ScaleSummary = {
   activeScaleGroups: number;
   doneScaleGroups: number;
@@ -71,11 +73,10 @@ type ScaleSummary = {
   scalesWithoutMissionOrder: number;
 };
 
-const PAGE_LIMIT = 10;
 
 const initialPagination: Pagination = {
   page: 1,
-  limit: PAGE_LIMIT,
+  limit: 0,
   total: 0,
   totalPages: 1,
   hasPreviousPage: false,
@@ -129,11 +130,11 @@ function ScalesPageContent() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [scaleStatusFilter, setScaleStatusFilter] = useState("");
+  const [championshipFilter, setChampionshipFilter] = useState("");
   const [scaleTab, setScaleTab] = useState<"ACTIVE" | "DONE">("ACTIVE");
   const [scaleGroups, setScaleGroups] = useState<ScaleGroup[]>([]);
   const [pagination, setPagination] = useState<Pagination>(initialPagination);
   const [summary, setSummary] = useState<ScaleSummary>(initialSummary);
-  const [currentPage, setCurrentPage] = useState(1);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState("");
 
@@ -193,7 +194,7 @@ function ScalesPageContent() {
     });
   }
 
-  async function loadScales(pageToLoad = currentPage) {
+  async function loadScales() {
     try {
       setListLoading(true);
       setListError("");
@@ -202,11 +203,10 @@ function ScalesPageContent() {
         params: {
           tab: scaleTab,
           status: scaleStatusFilter || undefined,
+          championship: championshipFilter || undefined,
           search: search.trim() || undefined,
           startDate: startDate || undefined,
           endDate: endDate || undefined,
-          page: pageToLoad,
-          limit: PAGE_LIMIT,
         },
       });
 
@@ -264,13 +264,17 @@ function ScalesPageContent() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [scaleTab, scaleStatusFilter, search, startDate, endDate]);
 
   useEffect(() => {
-    loadScales(currentPage);
-  }, [currentPage, scaleTab, scaleStatusFilter, search, startDate, endDate]);
+    loadScales();
+  }, [
+    scaleTab,
+    scaleStatusFilter,
+    championshipFilter,
+    search,
+    startDate,
+    endDate,
+  ]);
 
   function canConfirmScale(scale?: Scale) {
     if (!scale) return false;
@@ -315,7 +319,67 @@ function ScalesPageContent() {
 
   const groupedScales = scaleGroups;
 
-  const filteredGroups = groupedScales;
+  const championshipOptions = useMemo(() => {
+    const names = matches
+      .map((match) => match.championship?.name?.trim())
+      .filter((name): name is string => Boolean(name));
+
+    return Array.from(new Set(names)).sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
+  }, [matches]);
+
+  const filteredGroups = useMemo(() => {
+    if (!championshipFilter) return groupedScales;
+
+    return groupedScales.filter(
+      (group) =>
+        group.match.championship?.name?.trim() === championshipFilter,
+    );
+  }, [groupedScales, championshipFilter]);
+
+  const groupedFilteredGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        groups: ScaleGroup[];
+        visibleGroups: ScaleGroup[];
+        page: number;
+        total: number;
+        totalPages: number;
+      }
+    >();
+
+    filteredGroups.forEach((group) => {
+      const championshipName =
+        group.match.championship?.name?.trim() || "Sem campeonato";
+      const championshipId = championshipName.toLocaleLowerCase("pt-BR");
+      const currentGroup = groups.get(championshipId);
+
+      if (currentGroup) {
+        currentGroup.groups.push(group);
+        currentGroup.visibleGroups.push(group);
+        currentGroup.total += 1;
+        return;
+      }
+
+      groups.set(championshipId, {
+        id: championshipId,
+        name: championshipName,
+        groups: [group],
+        visibleGroups: [group],
+        page: 1,
+        total: 1,
+        totalPages: 1,
+      });
+    });
+
+    return Array.from(groups.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, "pt-BR"),
+    );
+  }, [filteredGroups]);
 
   const activeScaleGroups = summary.activeScaleGroups;
   const doneScaleGroups = summary.doneScaleGroups;
@@ -326,6 +390,32 @@ function ScalesPageContent() {
       ? summary.confirmedDoneScales ?? summary.confirmedScales
       : summary.confirmedActiveScales ?? summary.confirmedScales;
   const scalesWithoutMissionOrderCount = summary.scalesWithoutMissionOrder;
+
+  const dcoOptions = useMemo(() => {
+    return officials
+      .filter(
+        (official) =>
+          official.active !== false &&
+          String(official.operationalRole || "")
+            .trim()
+            .toUpperCase() === "DCO",
+      )
+      .sort((a, b) =>
+        a.user.name.localeCompare(b.user.name, "pt-BR", {
+          sensitivity: "base",
+        }),
+      );
+  }, [officials]);
+
+  const assistantOptions = useMemo(() => {
+    return officials
+      .filter((official) => official.active !== false)
+      .sort((a, b) =>
+        a.user.name.localeCompare(b.user.name, "pt-BR", {
+          sensitivity: "base",
+        }),
+      );
+  }, [officials]);
 
   const availableMatches = useMemo(() => {
     return matches
@@ -493,7 +583,7 @@ function ScalesPageContent() {
       }
 
       clearForm();
-      await loadScales(currentPage);
+      await loadScales();
 
       showMessage("Escala salva", "Escala salva com sucesso!", "success");
     } catch (error: any) {
@@ -528,7 +618,7 @@ function ScalesPageContent() {
       onConfirm: async () => {
         try {
           await api.patch(`/match-officials/${scale.id}/confirm`);
-          await loadScales(currentPage);
+          await loadScales();
           showMessage(
             "Escala confirmada",
             "Sua confirmação foi registrada com sucesso.",
@@ -568,7 +658,7 @@ function ScalesPageContent() {
       onConfirm: async () => {
         try {
           await api.patch(`/match-officials/${scale.id}/refuse`);
-          await loadScales(currentPage);
+          await loadScales();
           showMessage(
             "Escala recusada",
             "Sua recusa foi registrada com sucesso.",
@@ -638,7 +728,7 @@ function ScalesPageContent() {
       onConfirm: async () => {
         try {
           await api.delete(`/match-officials/${id}`);
-          await loadScales(currentPage);
+          await loadScales();
           showMessage(
             "Oficial removido",
             "Oficial removido da escala com sucesso.",
@@ -680,7 +770,7 @@ function ScalesPageContent() {
             await api.delete(`/match-officials/${group.assistant.id}`);
           }
 
-          await loadScales(currentPage);
+          await loadScales();
           showMessage("Escala excluída", "Escala removida com sucesso.", "success");
         } catch (error: any) {
           showMessage(
@@ -692,6 +782,7 @@ function ScalesPageContent() {
       },
     });
   }
+
 
   return (
     <main className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--cdb-light)] lg:flex-row">
@@ -715,7 +806,7 @@ function ScalesPageContent() {
             </div>
 
             <div className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold shadow-lg w-fit">
-              {pagination.total} jogos escalados
+              {scaleTab === "DONE" ? doneScaleGroups : activeScaleGroups} jogos escalados
             </div>
           </div>
         </header>
@@ -829,7 +920,6 @@ function ScalesPageContent() {
             <button
               type="button"
               onClick={() => {
-                setCurrentPage(1);
                 setScaleStatusFilter("CONFIRMED");
               }}
               className="bg-white rounded-3xl p-5 lg:p-6 shadow-sm border border-slate-200 transition hover:shadow-md text-left"
@@ -924,9 +1014,9 @@ function ScalesPageContent() {
                     value={dcoOfficialId}
                     onChange={(e) => setDcoOfficialId(e.target.value)}
                   >
-                    <option value="">DCO opcional</option>
+                    <option value="">DCO obrigatorio</option>
 
-                    {officials.map((official) => (
+                    {dcoOptions.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user.name}
                       </option>
@@ -946,7 +1036,7 @@ function ScalesPageContent() {
                   >
                     <option value="">Assistente opcional</option>
 
-                    {officials.map((official) => (
+                    {assistantOptions.map((official) => (
                       <option key={official.id} value={official.id}>
                         {official.user.name}
                       </option>
@@ -993,7 +1083,6 @@ function ScalesPageContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setCurrentPage(1);
                     setScaleTab("ACTIVE");
                   }}
                   className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
@@ -1008,7 +1097,6 @@ function ScalesPageContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setCurrentPage(1);
                     setScaleTab("DONE");
                   }}
                   className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
@@ -1021,32 +1109,35 @@ function ScalesPageContent() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
                 <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Data início
+                  </label>
                   <input
                     type="date"
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                   />
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    Data início
-                  </label>
                 </div>
 
                 <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Data fim
+                  </label>
                   <input
                     type="date"
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                   />
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    Data fim
-                  </label>
                 </div>
 
                 <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Status da escala
+                  </label>
                   <select
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
                     value={scaleStatusFilter}
@@ -1057,31 +1148,51 @@ function ScalesPageContent() {
                     <option value="CONFIRMED">Confirmado</option>
                     <option value="REFUSED">Recusado</option>
                   </select>
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    Status da escala
-                  </label>
                 </div>
 
                 <div className="xl:col-span-2">
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Campeonato
+                  </label>
+                  <select
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
+                    value={championshipFilter}
+                    onChange={(e) => setChampionshipFilter(e.target.value)}
+                  >
+                    <option value="">Todos os campeonatos</option>
+                    {championshipOptions.map((championship) => (
+                      <option key={championship} value={championship}>
+                        {championship}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Buscar
+                  </label>
                   <input
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-4 focus:ring-blue-100"
-                    placeholder="Buscar por jogo, campeonato, estádio ou oficial..."
+                    placeholder="Jogo, estádio ou oficial"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                  <label className="mt-2 block text-sm font-bold text-slate-700">
-                    Buscar
-                  </label>
                 </div>
 
-                {(startDate || endDate || search || scaleStatusFilter) && (
-                  <div className="xl:col-span-5">
+                {(startDate ||
+                  endDate ||
+                  search ||
+                  scaleStatusFilter ||
+                  championshipFilter) && (
+                  <div className="xl:col-span-6">
                     <button
                       onClick={() => {
                         setStartDate("");
                         setEndDate("");
                         setSearch("");
                         setScaleStatusFilter("");
+                        setChampionshipFilter("");
                       }}
                       className="rounded-2xl border border-slate-200 bg-white px-5 py-3 font-bold text-slate-700 transition hover:bg-slate-50"
                     >
@@ -1104,8 +1215,28 @@ function ScalesPageContent() {
               </div>
             )}
 
-            <div className="space-y-4 lg:hidden">
-              {filteredGroups.map((group) => (
+            <div className="space-y-5 lg:hidden">
+              {groupedFilteredGroups.map((championshipGroup) => (
+                <section
+                  key={championshipGroup.id}
+                  className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-blue-50 px-5 py-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
+                        Campeonato
+                      </p>
+                      <h3 className="mt-1 text-lg font-black text-[var(--cdb-blue)]">
+                        {championshipGroup.name}
+                      </h3>
+                    </div>
+                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
+                      {championshipGroup.groups.length} escala{championshipGroup.groups.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4 p-4">
+              {championshipGroup.visibleGroups.map((group) => (
                 <div
                   key={group.match.id}
                   className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -1284,26 +1415,56 @@ function ScalesPageContent() {
                     )}
                 </div>
               ))}
+                  </div>
+                </section>
+              ))}
             </div>
 
-            <div className="hidden max-w-full overflow-x-auto lg:block">
-              <table className="min-w-[1180px] w-full border-collapse">
+            <div className="hidden space-y-5 lg:block">
+              <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-5 py-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Todos os campeonatos
+                </p>
+                <h3 className="mt-1 text-xl font-black text-[var(--cdb-dark)]">
+                  Escalas agrupadas por campeonato
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  {filteredGroups.length} jogo{filteredGroups.length === 1 ? "" : "s"} em {groupedFilteredGroups.length} campeonato{groupedFilteredGroups.length === 1 ? "" : "s"}.
+                </p>
+              </div>
+
+              {groupedFilteredGroups.map((championshipGroup) => (
+                <section
+                  key={championshipGroup.id}
+                  className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-4 border-b border-blue-100 bg-blue-50 px-5 py-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
+                        Campeonato
+                      </p>
+                      <h3 className="mt-1 text-xl font-black text-[var(--cdb-blue)]">
+                        {championshipGroup.name}
+                      </h3>
+                    </div>
+                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
+                      {championshipGroup.groups.length} escala{championshipGroup.groups.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="max-w-full overflow-x-auto px-5">
+              <table className="min-w-[980px] w-full border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
                     <th className="py-4 pr-4 font-black">Jogo</th>
-                    <th className="py-4 pr-4 font-black">Campeonato</th>
-                    <th className="py-4 pr-4 font-black">Estádio</th>
-                    <th className="py-4 pr-4 font-black">DCO</th>
-                    <th className="py-4 pr-4 font-black">Status DCO</th>
-                    <th className="py-4 pr-4 font-black">Assistente</th>
-                    <th className="py-4 pr-4 font-black">Status Assistente</th>
                     <th className="py-4 pr-4 font-black">Data</th>
+                    <th className="py-4 pr-4 font-black">Estádio</th>
+                    <th className="py-4 pr-4 font-black">Oficiais da escala</th>
                     <th className="py-4 pr-4 font-black">Ações</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {filteredGroups.map((group) => (
+                  {championshipGroup.visibleGroups.map((group) => (
                     <tr
                       key={group.match.id}
                       className="border-b border-slate-100 transition hover:bg-slate-50"
@@ -1318,8 +1479,11 @@ function ScalesPageContent() {
                         </div>
                       </td>
 
-                      <td className="py-5 pr-4 text-slate-700">
-                        {group.match.championship.name}
+
+                      <td className="whitespace-nowrap py-5 pr-4 text-sm text-slate-600">
+                        {new Date(group.match.matchDate).toLocaleString(
+                          "pt-BR",
+                        )}
                       </td>
 
                       <td className="py-5 pr-4 text-slate-700">
@@ -1327,55 +1491,61 @@ function ScalesPageContent() {
                       </td>
 
                       <td className="py-5 pr-4">
-                        {group.dco ? (
-                          <div>
-                            <div className="font-bold text-slate-800">
-                              {group.dco.official.user.name}
+                        <div className="min-w-[300px] space-y-3">
+                          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                DCO
+                              </p>
+                              {group.dco ? (
+                                <>
+                                  <p className="mt-1 truncate font-bold text-slate-800">
+                                    {group.dco.official.user.name}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    {group.dco.official.user.email}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="mt-1 text-sm text-slate-400">
+                                  Não escalado
+                                </p>
+                              )}
                             </div>
 
-                            <div className="text-sm text-slate-500">
-                              {group.dco.official.user.email}
-                            </div>
+                            {renderScaleStatus(
+                              group.dco,
+                              "inline-flex min-w-[105px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-slate-400">Não escalado</span>
-                        )}
-                      </td>
 
-                      <td className="py-5 pr-4">
-                        {renderScaleStatus(
-                          group.dco,
-                          "inline-flex min-w-[110px] items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
-                        )}
-                      </td>
-
-                      <td className="py-5 pr-4">
-                        {group.assistant ? (
-                          <div>
-                            <div className="font-bold text-slate-800">
-                              {group.assistant.official.user.name}
+                          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                Assistente
+                              </p>
+                              {group.assistant ? (
+                                <>
+                                  <p className="mt-1 truncate font-bold text-slate-800">
+                                    {group.assistant.official.user.name}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    {group.assistant.official.user.email}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="mt-1 text-sm text-slate-400">
+                                  Não escalado
+                                </p>
+                              )}
                             </div>
 
-                            <div className="text-sm text-slate-500">
-                              {group.assistant.official.user.email}
-                            </div>
+                            {renderScaleStatus(
+                              group.assistant,
+                              "inline-flex min-w-[105px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-slate-400">Não escalado</span>
-                        )}
-                      </td>
-
-                      <td className="py-5 pr-4">
-                        {renderScaleStatus(
-                          group.assistant,
-                          "inline-flex min-w-[110px] items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold",
-                        )}
-                      </td>
-
-                      <td className="whitespace-nowrap py-5 pr-4 text-sm text-slate-600">
-                        {new Date(group.match.matchDate).toLocaleString(
-                          "pt-BR",
-                        )}
+                        </div>
                       </td>
 
                       <td className="py-5 pr-4">
@@ -1470,6 +1640,9 @@ function ScalesPageContent() {
                   ))}
                 </tbody>
               </table>
+                  </div>
+                </section>
+              ))}
             </div>
 
             {filteredGroups.length === 0 && (
@@ -1486,37 +1659,6 @@ function ScalesPageContent() {
               </div>
             )}
 
-            {pagination.total > 0 && (
-              <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm font-semibold text-slate-600">
-                  Página {pagination.page} de {pagination.totalPages} · {pagination.total} jogo(s) encontrado(s)
-                </p>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
-                    disabled={!pagination.hasPreviousPage || listLoading}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Anterior
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCurrentPage((page) =>
-                        Math.min(page + 1, pagination.totalPages),
-                      )
-                    }
-                    disabled={!pagination.hasNextPage || listLoading}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Próxima
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </section>
       </div>

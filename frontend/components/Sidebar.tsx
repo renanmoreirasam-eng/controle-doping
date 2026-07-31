@@ -38,6 +38,12 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR'],
   },
   {
+    name: 'Material Extra',
+    href: '/dashboard/extra-materials',
+    icon: '🧾',
+    roles: ['ADMIN', 'COORDINATOR'],
+  },
+  {
     name: 'Envio ao Laboratório',
     href: '/dashboard/lbcd-shipping',
     icon: '🚚',

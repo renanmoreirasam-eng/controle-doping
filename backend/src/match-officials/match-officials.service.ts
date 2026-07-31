@@ -301,15 +301,13 @@ export class MatchOfficialsService {
     tab?: 'ACTIVE' | 'DONE';
     status?: 'PENDING' | 'CONFIRMED' | 'REFUSED';
     search?: string;
+    championship?: string;
     startDate?: string;
     endDate?: string;
     page?: string;
     limit?: string;
     user?: any;
   }) {
-    const page = Math.max(Number(filters.page || 1), 1);
-    const limit = Math.min(Math.max(Number(filters.limit || 10), 1), 50);
-    const skip = (page - 1) * limit;
 
     const userRole = this.getUserRole(filters.user);
     const isAdmin = userRole === 'ADMIN';
@@ -351,6 +349,12 @@ export class MatchOfficialsService {
     } else {
       matchWhere.status = {
         not: 'CONTROL_DONE',
+      };
+    }
+
+    if (filters.championship) {
+      matchWhere.championship = {
+        name: filters.championship,
       };
     }
 
@@ -454,9 +458,8 @@ export class MatchOfficialsService {
       return filters.tab === 'DONE' ? dateB - dateA : dateA - dateB;
     });
 
-    const groups = allGroups.slice(skip, skip + limit);
+    const groups = allGroups;
     const total = allGroups.length;
-    const totalPages = Math.max(Math.ceil(total / limit), 1);
 
     const summaryScaleWhere: any = {};
 
@@ -553,12 +556,12 @@ export class MatchOfficialsService {
     return {
       data: groups,
       pagination: {
-        page,
-        limit,
+        page: 1,
+        limit: total,
         total,
-        totalPages,
-        hasPreviousPage: page > 1,
-        hasNextPage: page < totalPages,
+        totalPages: 1,
+        hasPreviousPage: false,
+        hasNextPage: false,
       },
       summary: {
         activeScaleGroups,

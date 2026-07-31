@@ -41,6 +41,7 @@ export class MatchesController {
       awayTeam: string;
       matchDate: string;
       missionCode?: string;
+      missionOrderAnalysis?: string | null;
       matchNumber?: string;
       roundOrPhase?: string;
       missionOrderFileName?: string | null;
@@ -70,6 +71,7 @@ export class MatchesController {
       matchDate?: string;
       status?: MatchStatus;
       missionCode?: string;
+      missionOrderAnalysis?: string | null;
       matchNumber?: string;
       roundOrPhase?: string;
       missionOrderFileName?: string | null;
