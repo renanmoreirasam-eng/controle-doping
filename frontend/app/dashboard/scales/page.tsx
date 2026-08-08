@@ -139,7 +139,19 @@ function ScalesPageContent() {
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [scaleStatusFilter, setScaleStatusFilter] = useState("");
+  const [scaleStatusFilter, setScaleStatusFilter] = useState(() => {
+    const status = searchParams.get("status");
+
+    if (
+      status === "PENDING" ||
+      status === "CONFIRMED" ||
+      status === "REFUSED"
+    ) {
+      return status;
+    }
+
+    return "";
+  });
   const [championshipFilter, setChampionshipFilter] = useState("");
   const [scaleTab, setScaleTab] = useState<"ACTIVE" | "DONE">("ACTIVE");
   const [scaleGroups, setScaleGroups] = useState<ScaleGroup[]>([]);
@@ -280,8 +292,13 @@ function ScalesPageContent() {
       status === "CONFIRMED" ||
       status === "REFUSED"
     ) {
-      setScaleStatusFilter(status);
+      setScaleStatusFilter((current) =>
+        current === status ? current : status,
+      );
+      return;
     }
+
+    setScaleStatusFilter((current) => (current ? "" : current));
   }, [searchParams]);
 
 
