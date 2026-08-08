@@ -97,12 +97,6 @@ type Substitution = {
   createdAt: string;
 };
 
-type SubstitutionFormRow = {
-  playerOutNumber: string;
-  playerInNumber: string;
-};
-
-
 type RoomInspectionItem = {
   label: string;
   status: string;
@@ -205,13 +199,6 @@ type ExtraMaterialUsageItem = {
 };
 
 
-function createEmptySubstitutionRows(): SubstitutionFormRow[] {
-  return Array.from({ length: 5 }, () => ({
-    playerOutNumber: '',
-    playerInNumber: '',
-  }));
-}
-
 const defaultRoomItems: RoomInspectionItem[] = [
   { label: 'Mesa disponível', status: 'CONFORME' },
   { label: 'Cadeiras disponíveis', status: 'CONFORME' },
@@ -251,8 +238,7 @@ type ActionKey =
   | 'match-kits'
   | 'finish-control'
   | 'extra-materials'
-  | 'final-document-upload'
-  | 'substitutions';
+  | 'final-document-upload';
 
 const initialModalState: ModalState = {
   open: false,
@@ -475,22 +461,6 @@ export default function MatchDetailsPage() {
     awayExamName: '',
     awayReserveNumber: '',
     awayReserveName: '',
-  });
-
-  const [substitutionForm, setSubstitutionForm] = useState<{
-    HOME: SubstitutionFormRow[];
-    AWAY: SubstitutionFormRow[];
-  }>({
-    HOME: createEmptySubstitutionRows(),
-    AWAY: createEmptySubstitutionRows(),
-  });
-  const [showSubstitutionsForm, setShowSubstitutionsForm] = useState(false);
-  const [visibleSubstitutionRows, setVisibleSubstitutionRows] = useState<{
-    HOME: number;
-    AWAY: number;
-  }>({
-    HOME: 1,
-    AWAY: 1,
   });
 
   const [roomItems, setRoomItems] = useState<RoomInspectionItem[]>(defaultRoomItems);
@@ -1002,48 +972,6 @@ export default function MatchDetailsPage() {
   }, []);
 
   useEffect(() => {
-    const nextForm = {
-      HOME: createEmptySubstitutionRows(),
-      AWAY: createEmptySubstitutionRows(),
-    };
-
-    const orderedSubstitutions = [...substitutions].sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() -
-        new Date(b.createdAt).getTime(),
-    );
-
-    for (const team of ['HOME', 'AWAY'] as const) {
-      orderedSubstitutions
-        .filter((sub) => sub.team === team)
-        .slice(0, 5)
-        .forEach((sub, index) => {
-          nextForm[team][index] = {
-            playerOutNumber: sub.playerOutNumber,
-            playerInNumber: sub.playerInNumber,
-          };
-        });
-    }
-
-    setSubstitutionForm(nextForm);
-
-    setVisibleSubstitutionRows({
-      HOME: Math.max(
-        1,
-        nextForm.HOME.filter(
-          (row) => row.playerOutNumber || row.playerInNumber,
-        ).length,
-      ),
-      AWAY: Math.max(
-        1,
-        nextForm.AWAY.filter(
-          (row) => row.playerOutNumber || row.playerInNumber,
-        ).length,
-      ),
-    });
-  }, [substitutions]);
-
-  useEffect(() => {
     let interval: NodeJS.Timeout;
 
     if (running) {
@@ -1319,70 +1247,6 @@ export default function MatchDetailsPage() {
   function getTeamName(team: string) {
     if (!match) return team;
     return team === 'HOME' ? match.homeTeam : match.awayTeam;
-  }
-
-  function wasSubstituted(player: DrawPlayer) {
-    return substitutions.find(
-      (sub) => sub.team === player.team && sub.playerOutNumber === player.number,
-    );
-  }
-
-  function updateSubstitutionForm(
-    team: 'HOME' | 'AWAY',
-    index: number,
-    field: keyof SubstitutionFormRow,
-    value: string,
-  ) {
-    if (isControlDone) return;
-
-    setSubstitutionForm((prev) => {
-      const rows = [...prev[team]];
-      rows[index] = {
-        ...rows[index],
-        [field]: value,
-      };
-
-      return {
-        ...prev,
-        [team]: rows,
-      };
-    });
-  }
-
-  function addSubstitutionRow(team: 'HOME' | 'AWAY') {
-    if (isControlDone) return;
-
-    setVisibleSubstitutionRows((prev) => ({
-      ...prev,
-      [team]: Math.min(5, prev[team] + 1),
-    }));
-  }
-
-  async function removeSubstitutionRow(team: 'HOME' | 'AWAY', index: number) {
-    if (isControlDone || isAnyActionLoading) return;
-
-    const nextRows = [...substitutionForm[team]];
-    nextRows.splice(index, 1);
-    nextRows.push({
-      playerOutNumber: '',
-      playerInNumber: '',
-    });
-
-    const nextForm = {
-      ...substitutionForm,
-      [team]: nextRows,
-    };
-
-    setSubstitutionForm(nextForm);
-
-    setVisibleSubstitutionRows((prev) => ({
-      ...prev,
-      [team]: Math.max(1, prev[team] - 1),
-    }));
-
-    await runExclusiveAction('substitutions', () =>
-      saveSubstitutions(nextForm),
-    );
   }
 
   function getSubstitutionsSummary(team: 'HOME' | 'AWAY') {
@@ -2525,87 +2389,6 @@ export default function MatchDetailsPage() {
     }
   }
 
-  async function saveSubstitutions(
-    formToSave: {
-      HOME: SubstitutionFormRow[];
-      AWAY: SubstitutionFormRow[];
-    } = substitutionForm,
-  ) {
-    if (isControlDone) {
-      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível alterar informações.', 'warning');
-      return;
-    }
-
-    const rowsToSave = (['HOME', 'AWAY'] as const).flatMap((team) =>
-      formToSave[team]
-        .map((row, index) => ({
-          team,
-          index,
-          playerOutNumber: row.playerOutNumber.trim(),
-          playerInNumber: row.playerInNumber.trim(),
-        }))
-        .filter((row) => row.playerOutNumber || row.playerInNumber),
-    );
-
-    const incompleteRow = rowsToSave.find(
-      (row) => !row.playerOutNumber || !row.playerInNumber,
-    );
-
-    if (incompleteRow) {
-      showMessage('Substituição incompleta', `Preencha Nº saiu e Nº entrou na substituição ${incompleteRow.index + 1} de ${getTeamName(incompleteRow.team)}.`, 'warning');
-      return;
-    }
-
-    try {
-      for (const substitution of substitutions) {
-        await api.delete(`/substitutions/${substitution.id}`);
-      }
-
-      for (const row of rowsToSave) {
-        await api.post('/substitutions', {
-          matchId,
-          team: row.team,
-          playerOutName: `Atleta ${row.playerOutNumber}`,
-          playerOutNumber: row.playerOutNumber,
-          playerInName: `Atleta ${row.playerInNumber}`,
-          playerInNumber: row.playerInNumber,
-          minute: null,
-          period: null,
-          notes: null,
-        });
-      }
-
-      await refreshOperationData({ silent: true });
-
-      showMessage('Substituições salvas', 'Substituições salvas com sucesso!', 'success');
-    } catch (error: any) {
-      showMessage('Erro ao salvar substituições', getErrorMessage(error, 'Erro ao salvar substituições'), 'danger');
-    }
-  }
-
-  async function deleteSubstitution(id: string) {
-    if (isControlDone) {
-      showMessage('Controle bloqueado', 'Controle já realizado. Não é possível excluir substituições.', 'warning');
-      return;
-    }
-
-    showConfirm({
-      title: 'Remover substituição',
-      message: 'Deseja remover esta substituição?',
-      variant: 'danger',
-      confirmText: 'Remover',
-      onConfirm: async () => {
-        try {
-          await api.delete(`/substitutions/${id}`);
-          await refreshOperationData({ silent: true });
-          showMessage('Substituição removida', 'Substituição removida com sucesso.', 'success');
-        } catch (error: any) {
-          showMessage('Erro ao remover substituição', getErrorMessage(error, 'Erro ao remover substituição'), 'danger');
-        }
-      },
-    });
-  }
-
   function formatDateOnly(date: string) {
   return new Date(date).toLocaleDateString('pt-BR');
 }
@@ -3421,11 +3204,11 @@ function formatTimeOnly(date: string) {
                         : 'bg-slate-50 border-slate-200'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-black text-[var(--cdb-dark)]">
-                          6. Registrar substituições
+                          6. Substituições
                         </p>
 
                         <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -3434,231 +3217,90 @@ function formatTimeOnly(date: string) {
                       </div>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        Registre as substituições ocorridas durante a partida, caso existam.
+                        Consulte as substituições registradas. O cadastro e as alterações são feitos em uma página exclusiva.
                       </p>
                     </div>
 
                     {substitutions.length > 0 && (
-                      <span className="shrink-0 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                        Registrado
+                      <span className="w-fit shrink-0 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                        {substitutions.length} registrada(s)
                       </span>
                     )}
                   </div>
 
                   {(isMatchInProgress || substitutions.length > 0 || isControlDone) ? (
                     <div className="mt-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                            Substituições
-                          </p>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {(['HOME', 'AWAY'] as const).map((team) => {
+                          const teamSubstitutions = getSubstitutionsSummary(team);
+                          const outNumbers = teamSubstitutions
+                            .map((item) => item.playerOutNumber)
+                            .filter(Boolean);
+                          const inNumbers = teamSubstitutions
+                            .map((item) => item.playerInNumber)
+                            .filter(Boolean);
 
-                          <p className="mt-1 text-sm text-slate-600">
-                            {substitutions.length > 0
-                              ? `${substitutions.length} substituição(ões) registrada(s).`
-                              : 'Nenhuma substituição registrada.'}
-                          </p>
-                        </div>
+                          return (
+                            <div
+                              key={`summary-${team}`}
+                              className="rounded-2xl border border-slate-200 bg-white p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                    {team === 'HOME' ? 'Mandante' : 'Visitante'}
+                                  </p>
 
-                        {!isControlDone && isMatchInProgress && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowSubstitutionsForm((current) => !current)
-                            }
-                            className="inline-flex w-fit items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95"
-                          >
-                            {showSubstitutionsForm
-                              ? 'Ocultar substituições'
-                              : substitutions.length > 0
-                                ? 'Ver/editar substituições'
-                                : 'Registrar substituições'}
-                          </button>
-                        )}
+                                  <h3 className="mt-1 text-base font-black text-[var(--cdb-dark)]">
+                                    {getTeamName(team)}
+                                  </h3>
+                                </div>
+
+                                <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-black text-[var(--cdb-blue)]">
+                                  {teamSubstitutions.length}/5
+                                </span>
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <div className="rounded-xl bg-red-50 px-3 py-2 ring-1 ring-red-100">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-red-500">
+                                    Saíram
+                                  </p>
+                                  <p className="mt-1 text-sm font-black text-red-700">
+                                    {outNumbers.length > 0 ? outNumbers.join(', ') : '—'}
+                                  </p>
+                                </div>
+
+                                <div className="rounded-xl bg-green-50 px-3 py-2 ring-1 ring-green-100">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-green-600">
+                                    Entraram
+                                  </p>
+                                  <p className="mt-1 text-sm font-black text-green-700">
+                                    {inNumbers.length > 0 ? inNumbers.join(', ') : '—'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
 
-                      {substitutions.length > 0 && !showSubstitutionsForm && (
-                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                          {(['HOME', 'AWAY'] as const).map((team) => {
-                            const teamSubstitutions = getSubstitutionsSummary(team);
-
-                            return (
-                              <div
-                                key={`summary-${team}`}
-                                className="rounded-2xl border border-slate-100 bg-slate-50 p-3"
-                              >
-                                <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                                  {getTeamName(team)}
-                                </p>
-
-                                {teamSubstitutions.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {teamSubstitutions.map((substitution, index) => (
-                                      <p
-                                        key={substitution.id || `${team}-${index}`}
-                                        className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-100"
-                                      >
-                                        Nº {substitution.playerOutNumber} saiu → Nº{' '}
-                                        {substitution.playerInNumber} entrou
-                                      </p>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p className="text-sm text-slate-400">
-                                    Nenhuma substituição registrada.
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
+                      {!isControlDone && isMatchInProgress && (
+                        <Link
+                          href={`/dashboard/matches/${matchId}/substitutions`}
+                          className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-[var(--cdb-blue)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-95 sm:w-auto"
+                        >
+                          Registrar substituições
+                        </Link>
                       )}
 
-                      {showSubstitutionsForm && !isControlDone && isMatchInProgress && (
-                        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                            {(['HOME', 'AWAY'] as const).map((team) => (
-                              <div
-                                key={`form-${team}`}
-                                className="rounded-2xl border border-slate-200 bg-white p-4"
-                              >
-                                <div className="mb-4 flex items-center justify-between gap-3">
-                                  <div>
-                                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                                      {team === 'HOME'
-                                        ? 'Equipe mandante'
-                                        : 'Equipe visitante'}
-                                    </p>
-
-                                    <h3 className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
-                                      {getTeamName(team)}
-                                    </h3>
-                                  </div>
-
-                                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                                    Máx. 5
-                                  </span>
-                                </div>
-
-                                <div className="space-y-3">
-                                  {substitutionForm[team]
-                                    .slice(0, visibleSubstitutionRows[team])
-                                    .map((row, index) => (
-                                      <div
-                                        key={`${team}-${index}`}
-                                        className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                                      >
-                                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                            Substituição {index + 1}
-                                          </p>
-
-                                          <div className="flex flex-wrap gap-2">
-                                            {visibleSubstitutionRows[team] > 1 && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  removeSubstitutionRow(team, index)
-                                                }
-                                                disabled={isAnyActionLoading}
-                                                className="rounded-xl border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                              >
-                                                {actionLoading === 'substitutions'
-                                                  ? 'Salvando...'
-                                                  : 'Remover'}
-                                              </button>
-                                            )}
-
-                                            <button
-                                              type="button"
-                                              disabled={isAnyActionLoading}
-                                              onClick={() =>
-                                                runExclusiveAction(
-                                                  'substitutions',
-                                                  saveSubstitutions,
-                                                )
-                                              }
-                                              className="rounded-xl bg-[var(--cdb-blue)] px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-                                            >
-                                              {actionLoading === 'substitutions'
-                                                ? 'Salvando...'
-                                                : 'Salvar alterações'}
-                                            </button>
-                                          </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                          <div>
-                                            <input
-                                              type="tel"
-                                              inputMode="numeric"
-                                              pattern="[0-9]*"
-                                              autoComplete="off"
-                                              className="w-full rounded-xl border border-slate-200 bg-white p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-                                              placeholder="Ex: 10"
-                                              value={row.playerOutNumber}
-                                              disabled={isControlDone}
-                                              onChange={(event) =>
-                                                updateSubstitutionForm(
-                                                  team,
-                                                  index,
-                                                  'playerOutNumber',
-                                                  event.target.value.replace(/\D/g, ''),
-                                                )
-                                              }
-                                            />
-                                            <label className="mt-2 block text-xs font-bold text-slate-600">
-                                              Nº saiu
-                                            </label>
-                                          </div>
-
-                                          <div>
-                                            <input
-                                              type="tel"
-                                              inputMode="numeric"
-                                              pattern="[0-9]*"
-                                              autoComplete="off"
-                                              className="w-full rounded-xl border border-slate-200 bg-white p-3 outline-none transition focus:border-[var(--cdb-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-                                              placeholder="Ex: 18"
-                                              value={row.playerInNumber}
-                                              disabled={isControlDone}
-                                              onChange={(event) =>
-                                                updateSubstitutionForm(
-                                                  team,
-                                                  index,
-                                                  'playerInNumber',
-                                                  event.target.value.replace(/\D/g, ''),
-                                                )
-                                              }
-                                            />
-                                            <label className="mt-2 block text-xs font-bold text-slate-600">
-                                              Nº entrou
-                                            </label>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                </div>
-
-                                {visibleSubstitutionRows[team] < 5 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => addSubstitutionRow(team)}
-                                    className="mt-3 w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                                  >
-                                    + Adicionar substituição
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="mt-4 rounded-2xl border border-blue-100 bg-white p-3">
-                            <p className="text-sm text-slate-500">
-                              Campos vazios serão ignorados. Preencha sempre o número que saiu e o número que entrou. Use o botão <strong>Salvar alterações</strong> ao lado da substituição para registrar.
-                            </p>
-                          </div>
-                        </div>
+                      {isControlDone && substitutions.length > 0 && (
+                        <Link
+                          href={`/dashboard/matches/${matchId}/substitutions`}
+                          className="mt-4 inline-flex w-full items-center justify-center rounded-2xl border border-green-200 bg-white px-4 py-3 text-sm font-bold text-green-700 transition hover:bg-green-50 sm:w-auto"
+                        >
+                          Visualizar substituições
+                        </Link>
                       )}
 
                       {isControlDone && substitutions.length === 0 && (

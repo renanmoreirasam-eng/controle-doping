@@ -761,7 +761,7 @@ function ScalesPageContent() {
         <button
           type="button"
           onClick={() => confirmScale(scale)}
-          className="inline-flex items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+          className="inline-flex items-center justify-center rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-black text-yellow-700 transition hover:bg-yellow-100"
         >
           Aceitar
         </button>
@@ -769,7 +769,7 @@ function ScalesPageContent() {
         <button
           type="button"
           onClick={() => refuseScale(scale)}
-          className="inline-flex items-center justify-center rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 transition hover:bg-amber-100"
+          className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 transition hover:bg-red-100"
         >
           Recusar
         </button>
