@@ -1639,6 +1639,64 @@ export default function MatchDetailsPage() {
     return files.HOME.length + files.AWAY.length;
   }
 
+  async function compressAthleteListImage(file: File): Promise<{
+    fileName: string;
+    fileType: string;
+    dataUrl: string;
+  }> {
+    const sourceDataUrl = await readFileAsDataUrl(file);
+
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+
+      element.onload = () => resolve(element);
+      element.onerror = () =>
+        reject(new Error('Não foi possível carregar uma das imagens selecionadas.'));
+      element.src = sourceDataUrl;
+    });
+
+    const maxDimension = 1800;
+    const jpegQuality = 0.82;
+    const originalWidth = image.naturalWidth || image.width;
+    const originalHeight = image.naturalHeight || image.height;
+
+    if (!originalWidth || !originalHeight) {
+      throw new Error('Uma das imagens selecionadas possui dimensões inválidas.');
+    }
+
+    const scale = Math.min(
+      1,
+      maxDimension / Math.max(originalWidth, originalHeight),
+    );
+
+    const targetWidth = Math.max(1, Math.round(originalWidth * scale));
+    const targetHeight = Math.max(1, Math.round(originalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('Não foi possível preparar a imagem para compactação.');
+    }
+
+    // Fundo branco evita áreas transparentes escuras ao converter PNG para JPEG.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const compactedDataUrl = canvas.toDataURL('image/jpeg', jpegQuality);
+    const fileNameWithoutExtension = file.name.replace(/\.[^.]+$/, '') || 'relacao-atletas';
+
+    return {
+      fileName: `${fileNameWithoutExtension}.jpg`,
+      fileType: 'image/jpeg',
+      dataUrl: compactedDataUrl,
+    };
+  }
+
   function getImageFormat(fileType: string) {
     return fileType.includes('png') ? 'PNG' : 'JPEG';
   }
@@ -1786,12 +1844,14 @@ export default function MatchDetailsPage() {
 
     try {
       const preparedFiles = await Promise.all(
-        selectedFiles.map(async (file) => ({
-          id: `${team}-${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
-          fileName: file.name,
-          fileType: file.type || 'image/jpeg',
-          dataUrl: await readFileAsDataUrl(file),
-        })),
+        selectedFiles.map(async (file) => {
+          const compactedImage = await compressAthleteListImage(file);
+
+          return {
+            id: `${team}-${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+            ...compactedImage,
+          };
+        }),
       );
 
       setPendingAthleteListFiles((current) => ({
@@ -1859,11 +1919,17 @@ export default function MatchDetailsPage() {
 
       await refreshOperationData({ silent: true });
 
-      showMessage(
-        'Relação salva',
-        'Relação de atletas gerada em PDF e salva com sucesso!',
-        'success',
-      );
+      setModal({
+        open: true,
+        title: 'Relação salva',
+        message: 'Relação de atletas gerada em PDF e salva com sucesso!',
+        variant: 'success',
+        confirmText: 'Continuar',
+        onConfirm: () => {
+          closeModal();
+          window.location.reload();
+        },
+      });
     } catch (error: any) {
       showMessage(
         'Erro ao salvar relação',
@@ -1940,11 +2006,17 @@ export default function MatchDetailsPage() {
 
       await refreshOperationData({ silent: true });
 
-      showMessage(
-        'Documento salvo',
-        'Relação de atletas salva com sucesso!',
-        'success',
-      );
+      setModal({
+        open: true,
+        title: 'Documento salvo',
+        message: 'Relação de atletas salva com sucesso!',
+        variant: 'success',
+        confirmText: 'Continuar',
+        onConfirm: () => {
+          closeModal();
+          window.location.reload();
+        },
+      });
     } catch (error: any) {
       showMessage(
         'Erro ao salvar documento',
@@ -1994,6 +2066,38 @@ export default function MatchDetailsPage() {
 
       if (status === 'CONTROL_DONE') {
         setControlComment('');
+      }
+
+      if (status === 'SCALE_ACCEPTED') {
+        setModal({
+          open: true,
+          title: 'Check-in realizado',
+          message: 'Check-in no estádio realizado com sucesso!',
+          variant: 'success',
+          confirmText: 'Continuar',
+          onConfirm: () => {
+            closeModal();
+            window.location.reload();
+          },
+        });
+
+        return;
+      }
+
+      if (status === 'IN_PROGRESS') {
+        setModal({
+          open: true,
+          title: 'Jogo em andamento',
+          message: 'Jogo marcado como em andamento com sucesso!',
+          variant: 'success',
+          confirmText: 'Continuar',
+          onConfirm: () => {
+            closeModal();
+            window.location.reload();
+          },
+        });
+
+        return;
       }
 
       showMessage('Status atualizado', 'Status do jogo atualizado com sucesso!', 'success');
