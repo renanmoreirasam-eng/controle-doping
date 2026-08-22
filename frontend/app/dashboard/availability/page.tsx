@@ -122,13 +122,13 @@ export default function AvailabilityPage() {
       dates: Unavailability[];
     }>();
 
-    items.forEach((item: any) => {
+    items.forEach((item: Unavailability) => {
       const key = item.userId;
       const current = grouped.get(key) || {
         userId: item.userId,
-        name: item.user?.name || 'Usuário',
-        email: item.user?.email || '',
-        dates: [],
+        name: (item as any).user?.name || 'Usuário',
+        email: (item as any).user?.email || '',
+        dates: [] as Unavailability[],
       };
 
       current.dates.push(item);
@@ -240,7 +240,6 @@ export default function AvailabilityPage() {
         </header>
 
         <section className="w-full max-w-full overflow-x-hidden p-4 lg:p-8">
-
           {message && (
             <div className={`mb-5 rounded-2xl border px-4 py-3 text-sm font-semibold ${
               message.type === 'success'
