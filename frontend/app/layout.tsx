@@ -33,7 +33,17 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col"><PWARegister />{children}</body>
+      <body className="min-h-full flex flex-col">
+        <PWARegister />
+
+        {process.env.NODE_ENV === "development" && (
+          <div className="sticky top-0 z-[9999] bg-yellow-400 px-4 py-2 text-center text-sm font-black text-slate-950 shadow-md">
+            ⚠ AMBIENTE LOCAL / DESENVOLVIMENTO
+          </div>
+        )}
+
+        {children}
+      </body>
     </html>
   );
 }

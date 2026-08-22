@@ -26,6 +26,12 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
   },
   {
+    name: 'Minha disponibilidade',
+    href: '/dashboard/availability',
+    icon: '📅',
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
+  },
+  {
     name: 'Relatórios',
     href: '/dashboard/reports',
     icon: '📈',

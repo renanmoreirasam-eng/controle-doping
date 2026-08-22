@@ -19,6 +19,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { PushLogsModule } from './push-logs/push-logs.module';
 import { ReportsModule } from './reports/reports.module';
 import { ExtraMaterialsModule } from './extra-materials/extra-materials.module';
+import { AvailabilityModule } from './availability/availability.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ExtraMaterialsModule } from './extra-materials/extra-materials.module';
     PushLogsModule,
     ReportsModule,
     ExtraMaterialsModule,
+    AvailabilityModule,
   ],
 })
 export class AppModule {}

@@ -43,6 +43,19 @@ type Official = {
   };
 };
 
+type OfficialAvailability = {
+  officialId: string;
+  userId: string;
+  name: string;
+  date: string;
+  unavailable: boolean;
+  unavailability?: {
+    id: string;
+    date: string;
+    note?: string | null;
+  } | null;
+};
+
 type Scale = {
   id: string;
   matchId: string;
@@ -133,6 +146,10 @@ function ScalesPageContent() {
   const [scales, setScales] = useState<Scale[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [officials, setOfficials] = useState<Official[]>([]);
+  const [availabilityByOfficial, setAvailabilityByOfficial] = useState<
+    Record<string, OfficialAvailability>
+  >({});
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [expandedTeamKey, setExpandedTeamKey] = useState<string | null>(null);
   const [expandedOfficialKey, setExpandedOfficialKey] = useState<string | null>(null);
@@ -625,11 +642,107 @@ function ScalesPageContent() {
       );
   }, [matches, editingMatchId]);
 
+  const selectedMatch = useMemo(
+    () => matches.find((item) => item.id === matchId) || null,
+    [matches, matchId],
+  );
+
+  function getMatchDateKey(match?: Match | null) {
+    if (!match?.matchDate) return "";
+
+    const date = new Date(match.matchDate);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function formatAvailabilityDate(dateKey: string) {
+    const [year, month, day] = String(dateKey || "").split("-");
+
+    if (!year || !month || !day) return dateKey;
+
+    return `${day}/${month}/${year}`;
+  }
+
+  function getOfficialAvailability(officialId?: string) {
+    if (!officialId) return null;
+    return availabilityByOfficial[officialId] || null;
+  }
+
+  const selectedDcoAvailability = getOfficialAvailability(dcoOfficialId);
+  const selectedAssistantAvailability =
+    getOfficialAvailability(assistantOfficialId);
+
+  async function loadAvailabilityForMatch() {
+    if (!isAdmin || !selectedMatch || officials.length === 0) {
+      setAvailabilityByOfficial({});
+      return;
+    }
+
+    const date = getMatchDateKey(selectedMatch);
+
+    if (!date) {
+      setAvailabilityByOfficial({});
+      return;
+    }
+
+    try {
+      setAvailabilityLoading(true);
+
+      const uniqueOfficials = Array.from(
+        new Map(officials.map((official) => [official.id, official])).values(),
+      );
+
+      const results = await Promise.all(
+        uniqueOfficials.map(async (official) => {
+          try {
+            const response = await api.get(
+              `/availability/official/${official.id}`,
+              {
+                params: { date },
+              },
+            );
+
+            return [official.id, response.data] as const;
+          } catch (error) {
+            console.warn(
+              `Não foi possível consultar a disponibilidade de ${official.user.name}.`,
+              error,
+            );
+            return null;
+          }
+        }),
+      );
+
+      const nextAvailability: Record<string, OfficialAvailability> = {};
+
+      results.forEach((result) => {
+        if (!result) return;
+        nextAvailability[result[0]] = result[1];
+      });
+
+      setAvailabilityByOfficial(nextAvailability);
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAvailabilityForMatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId, officials, isAdmin]);
+
   function clearForm() {
     setEditingMatchId(null);
     setMatchId("");
     setDcoOfficialId("");
     setAssistantOfficialId("");
+    setAvailabilityByOfficial({});
   }
 
   function startEdit(group: ScaleGroup) {
@@ -799,7 +912,7 @@ function ScalesPageContent() {
     });
   }
 
-  async function saveScales() {
+  async function saveScales(forceUnavailable = false) {
     if (!isAdmin) {
       showMessage(
         "Permissão negada",
@@ -833,6 +946,47 @@ function ScalesPageContent() {
         "O DCO e o Assistente não podem ser o mesmo oficial.",
         "warning",
       );
+      return;
+    }
+
+    const unavailableSelections = [
+      dcoOfficialId && selectedDcoAvailability?.unavailable
+        ? {
+            role: "DCO",
+            name:
+              officials.find((official) => official.id === dcoOfficialId)?.user
+                .name || "DCO selecionado",
+          }
+        : null,
+      assistantOfficialId && selectedAssistantAvailability?.unavailable
+        ? {
+            role: "Assistente",
+            name:
+              officials.find(
+                (official) => official.id === assistantOfficialId,
+              )?.user.name || "Assistente selecionado",
+          }
+        : null,
+    ].filter(Boolean) as Array<{ role: string; name: string }>;
+
+    if (!forceUnavailable && unavailableSelections.length > 0) {
+      const matchDate = getMatchDateKey(selectedMatch);
+      const people = unavailableSelections
+        .map((item) => `${item.role}: ${item.name}`)
+        .join("\n");
+
+      showConfirm({
+        title: "Oficial indisponível",
+        message: `${people}\n\nInformou indisponibilidade para ${formatAvailabilityDate(
+          matchDate,
+        )}. Deseja salvar a escala mesmo assim?`,
+        variant: "warning",
+        confirmText: "Escalar mesmo assim",
+        onConfirm: async () => {
+          await saveScales(true);
+        },
+      });
+
       return;
     }
 
@@ -1294,6 +1448,13 @@ function ScalesPageContent() {
                   <p className="mt-2 text-xs text-slate-500">
                     São listados apenas jogos ativos sem DCO ou Assistente associado.
                   </p>
+
+                  {matchId && (
+                    <p className="mt-2 text-xs font-semibold text-[var(--cdb-blue)]">
+                      A disponibilidade dos oficiais é verificada automaticamente
+                      para a data deste jogo.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1308,12 +1469,42 @@ function ScalesPageContent() {
                   >
                     <option value="">DCO obrigatorio</option>
 
-                    {dcoOptions.map((official) => (
-                      <option key={official.id} value={official.id}>
-                        {official.user.name}
-                      </option>
-                    ))}
+                    {dcoOptions.map((official) => {
+                      const availability = getOfficialAvailability(official.id);
+
+                      return (
+                        <option key={official.id} value={official.id}>
+                          {official.user.name}
+                          {availability?.unavailable
+                            ? " — INDISPONÍVEL"
+                            : ""}
+                        </option>
+                      );
+                    })}
                   </select>
+
+                  {matchId && (
+                    <div className="mt-2 min-h-6">
+                      {availabilityLoading ? (
+                        <p className="text-xs font-semibold text-slate-400">
+                          Verificando disponibilidade...
+                        </p>
+                      ) : dcoOfficialId && selectedDcoAvailability ? (
+                        selectedDcoAvailability.unavailable ? (
+                          <p className="inline-flex items-center rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-black text-red-700">
+                            ⚠ Indisponível em{" "}
+                            {formatAvailabilityDate(
+                              selectedDcoAvailability.date,
+                            )}
+                          </p>
+                        ) : (
+                          <p className="inline-flex items-center rounded-xl border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-black text-green-700">
+                            ✓ Disponível na data do jogo
+                          </p>
+                        )
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1328,18 +1519,49 @@ function ScalesPageContent() {
                   >
                     <option value="">Assistente opcional</option>
 
-                    {assistantOptions.map((official) => (
-                      <option key={official.id} value={official.id}>
-                        {official.user.name}
-                      </option>
-                    ))}
+                    {assistantOptions.map((official) => {
+                      const availability = getOfficialAvailability(official.id);
+
+                      return (
+                        <option key={official.id} value={official.id}>
+                          {official.user.name}
+                          {availability?.unavailable
+                            ? " — INDISPONÍVEL"
+                            : ""}
+                        </option>
+                      );
+                    })}
                   </select>
+
+                  {matchId && (
+                    <div className="mt-2 min-h-6">
+                      {availabilityLoading ? (
+                        <p className="text-xs font-semibold text-slate-400">
+                          Verificando disponibilidade...
+                        </p>
+                      ) : assistantOfficialId &&
+                        selectedAssistantAvailability ? (
+                        selectedAssistantAvailability.unavailable ? (
+                          <p className="inline-flex items-center rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-black text-red-700">
+                            ⚠ Indisponível em{" "}
+                            {formatAvailabilityDate(
+                              selectedAssistantAvailability.date,
+                            )}
+                          </p>
+                        ) : (
+                          <p className="inline-flex items-center rounded-xl border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-black text-green-700">
+                            ✓ Disponível na data do jogo
+                          </p>
+                        )
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <button
-                  onClick={saveScales}
+                  onClick={() => saveScales()}
                   className="w-full rounded-2xl bg-[var(--cdb-blue)] px-6 py-3 font-bold text-white shadow-lg shadow-blue-900/10 transition hover:brightness-95 sm:w-auto"
                 >
                   {editingMatchId ? "Salvar edição" : "Cadastrar escala"}

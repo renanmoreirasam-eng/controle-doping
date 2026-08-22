@@ -1697,6 +1697,64 @@ export default function MatchDetailsPage() {
     };
   }
 
+  async function compressFinalDocumentImage(file: File): Promise<{
+    fileName: string;
+    fileType: string;
+    dataUrl: string;
+  }> {
+    const sourceDataUrl = await readFileAsDataUrl(file);
+
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+
+      element.onload = () => resolve(element);
+      element.onerror = () =>
+        reject(new Error('Não foi possível carregar a imagem do documento final.'));
+      element.src = sourceDataUrl;
+    });
+
+    const maxDimension = 1800;
+    const jpegQuality = 0.82;
+    const originalWidth = image.naturalWidth || image.width;
+    const originalHeight = image.naturalHeight || image.height;
+
+    if (!originalWidth || !originalHeight) {
+      throw new Error('A imagem do documento final possui dimensões inválidas.');
+    }
+
+    const scale = Math.min(
+      1,
+      maxDimension / Math.max(originalWidth, originalHeight),
+    );
+
+    const targetWidth = Math.max(1, Math.round(originalWidth * scale));
+    const targetHeight = Math.max(1, Math.round(originalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('Não foi possível preparar o documento final para compactação.');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const compactedDataUrl = canvas.toDataURL('image/jpeg', jpegQuality);
+    const fileNameWithoutExtension =
+      file.name.replace(/\.[^.]+$/, '') || 'documento-final';
+
+    return {
+      fileName: `${fileNameWithoutExtension}.jpg`,
+      fileType: 'image/jpeg',
+      dataUrl: compactedDataUrl,
+    };
+  }
+
   function getImageFormat(fileType: string) {
     return fileType.includes('png') ? 'PNG' : 'JPEG';
   }
@@ -1968,9 +2026,20 @@ export default function MatchDetailsPage() {
         setSavingFinalDocumentFile(true);
       }
 
-      const fileData = await readFileAsDataUrl(file);
+      const isFinalDocumentImage =
+        type === 'finalDocument' &&
+        ['image/jpeg', 'image/jpg', 'image/png'].includes(file.type);
 
-      const response = await api.patch(`/matches/${matchId}/documents`,
+      const preparedFinalDocument = isFinalDocumentImage
+        ? await compressFinalDocumentImage(file)
+        : null;
+
+      const fileData = preparedFinalDocument
+        ? preparedFinalDocument.dataUrl
+        : await readFileAsDataUrl(file);
+
+      const response = await api.patch(
+        `/matches/${matchId}/documents`,
         type === 'athleteList'
           ? {
               athleteListFileName: file.name,
@@ -1978,8 +2047,12 @@ export default function MatchDetailsPage() {
               athleteListFileData: fileData,
             }
           : {
-              finalDocumentFileName: file.name,
-              finalDocumentFileType: file.type || 'application/octet-stream',
+              finalDocumentFileName:
+                preparedFinalDocument?.fileName || file.name,
+              finalDocumentFileType:
+                preparedFinalDocument?.fileType ||
+                file.type ||
+                'application/octet-stream',
               finalDocumentFileData: fileData,
             },
       );

@@ -24,6 +24,7 @@ model User {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   pushSubscriptions PushSubscription[]
+  unavailabilities  UserUnavailability[]
 
   announcementAcknowledgements AnnouncementAcknowledgement[]
 
@@ -706,4 +707,19 @@ model PushNotificationLog {
   @@index([module])
   @@index([sentAt])
   @@index([createdAt])
+}
+
+model UserUnavailability {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([userId])
 }
