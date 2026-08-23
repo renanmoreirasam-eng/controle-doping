@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from 'crypto';
+
 import {
   BadRequestException,
   ForbiddenException,
@@ -14,6 +16,38 @@ export class MatchOfficialsService {
     private prisma: PrismaService,
     private pushService: PushService,
   ) {}
+
+  private hashConfirmationToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private normalizeWhatsAppPhone(phone?: string | null) {
+    const digits = String(phone || '').replace(/\D/g, '');
+
+    if (!digits) {
+      return null;
+    }
+
+    // Cadastro brasileiro: se vier somente DDD + número, acrescenta 55.
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+
+    return digits;
+  }
+
+  private formatMatchDateForWhatsApp(value: Date | string | null | undefined) {
+    if (!value) return '';
+
+    return new Date(value).toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
 
   private includeRelations = {
     match: {
@@ -239,6 +273,186 @@ export class MatchOfficialsService {
       message: 'Notificação reenviada com sucesso.',
       scaleId: scale.id,
       userId: targetUserId,
+    };
+  }
+
+  async createWhatsAppLink(id: string, user: any) {
+    const userRole = this.getUserRole(user);
+
+    if (userRole !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Somente administradores podem gerar o envio da escala por WhatsApp.',
+      );
+    }
+
+    const scale = await this.prisma.matchOfficial.findUnique({
+      where: { id },
+      include: this.includeRelations,
+    });
+
+    if (!scale) {
+      throw new NotFoundException('Escala não encontrada.');
+    }
+
+    if (scale.confirmed !== null) {
+      throw new BadRequestException(
+        'O WhatsApp de confirmação só pode ser gerado para escalas pendentes.',
+      );
+    }
+
+    const phone = this.normalizeWhatsAppPhone(scale.official?.phone);
+
+    if (!phone) {
+      throw new BadRequestException(
+        'O oficial não possui telefone/WhatsApp cadastrado.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashConfirmationToken(token);
+
+    await this.prisma.matchOfficial.update({
+      where: { id },
+      data: {
+        confirmationTokenHash: tokenHash,
+        confirmationTokenCreatedAt: new Date(),
+      },
+    });
+
+    const appUrl = String(
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+    ).replace(/\/$/, '');
+
+    const confirmationUrl = `${appUrl}/confirmar-escala/${token}`;
+    const roleLabel = scale.role === 'DCO' ? 'DCO' : 'Assistente';
+    const championship = scale.match.championship?.name || '';
+    const stadium = scale.match.stadium?.name || '';
+    const matchDate = this.formatMatchDateForWhatsApp(scale.match.matchDate);
+    const officialName = scale.official?.user?.name || 'Oficial';
+
+    const message = [
+      `Olá, ${officialName}!`,
+      '',
+      'Você possui uma nova escala de Controle de Doping.',
+      '',
+      `🏆 ${championship}`,
+      `⚽ ${scale.match.homeTeam} x ${scale.match.awayTeam}`,
+      `📅 ${matchDate}`,
+      `📍 ${stadium}`,
+      `👤 Função: ${roleLabel}`,
+      '',
+      'Para confirmar ou recusar sua participação, acesse:',
+      confirmationUrl,
+    ].join('\n');
+
+    return {
+      scaleId: scale.id,
+      phone,
+      confirmationUrl,
+      message,
+      whatsappUrl: `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`,
+    };
+  }
+
+  async getPublicConfirmation(token: string) {
+    const tokenHash = this.hashConfirmationToken(token);
+
+    const scale = await this.prisma.matchOfficial.findUnique({
+      where: { confirmationTokenHash: tokenHash },
+      include: this.includeRelations,
+    });
+
+    if (!scale) {
+      throw new NotFoundException('Link de confirmação inválido.');
+    }
+
+    return {
+      id: scale.id,
+      status:
+        scale.confirmed === true
+          ? 'CONFIRMED'
+          : scale.confirmed === false
+            ? 'REFUSED'
+            : 'PENDING',
+      respondedAt: scale.respondedAt,
+      responseMethod: scale.responseMethod,
+      role: scale.role,
+      official: {
+        name: scale.official?.user?.name || '',
+      },
+      match: {
+        id: scale.match.id,
+        homeTeam: scale.match.homeTeam,
+        awayTeam: scale.match.awayTeam,
+        matchDate: scale.match.matchDate,
+        championship: scale.match.championship,
+        stadium: scale.match.stadium,
+      },
+    };
+  }
+
+  async confirmByToken(token: string) {
+    const tokenHash = this.hashConfirmationToken(token);
+
+    const scale = await this.prisma.matchOfficial.findUnique({
+      where: { confirmationTokenHash: tokenHash },
+    });
+
+    if (!scale) {
+      throw new NotFoundException('Link de confirmação inválido.');
+    }
+
+    if (scale.confirmed !== null) {
+      throw new BadRequestException('Esta escala já foi respondida.');
+    }
+
+    const updated = await this.prisma.matchOfficial.update({
+      where: { id: scale.id },
+      data: {
+        confirmed: true,
+        respondedAt: new Date(),
+        responseMethod: 'WHATSAPP_LINK',
+      },
+      include: this.includeRelations,
+    });
+
+    await this.updateMatchStatusIfScaleAccepted(updated.matchId);
+
+    return {
+      message: 'Escala confirmada com sucesso.',
+      status: 'CONFIRMED',
+      respondedAt: updated.respondedAt,
+    };
+  }
+
+  async refuseByToken(token: string) {
+    const tokenHash = this.hashConfirmationToken(token);
+
+    const scale = await this.prisma.matchOfficial.findUnique({
+      where: { confirmationTokenHash: tokenHash },
+    });
+
+    if (!scale) {
+      throw new NotFoundException('Link de confirmação inválido.');
+    }
+
+    if (scale.confirmed !== null) {
+      throw new BadRequestException('Esta escala já foi respondida.');
+    }
+
+    const updated = await this.prisma.matchOfficial.update({
+      where: { id: scale.id },
+      data: {
+        confirmed: false,
+        respondedAt: new Date(),
+        responseMethod: 'WHATSAPP_LINK',
+      },
+    });
+
+    return {
+      message: 'Escala recusada.',
+      status: 'REFUSED',
+      respondedAt: updated.respondedAt,
     };
   }
 

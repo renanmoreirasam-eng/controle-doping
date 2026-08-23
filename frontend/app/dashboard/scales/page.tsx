@@ -126,12 +126,30 @@ type ModalState = {
   onConfirm?: () => void | Promise<void>;
 };
 
+type WhatsAppModalState = {
+  open: boolean;
+  officialName: string;
+  roleLabel: string;
+  matchLabel: string;
+  message: string;
+  whatsappUrl: string;
+};
+
 const initialModalState: ModalState = {
   open: false,
   title: "",
   message: "",
   variant: "default",
   confirmText: "Fechar",
+};
+
+const initialWhatsAppModalState: WhatsAppModalState = {
+  open: false,
+  officialName: "",
+  roleLabel: "",
+  matchLabel: "",
+  message: "",
+  whatsappUrl: "",
 };
 
 function getErrorMessage(error: any, fallback: string) {
@@ -182,6 +200,10 @@ function ScalesPageContent() {
   const [dcoOfficialId, setDcoOfficialId] = useState("");
   const [assistantOfficialId, setAssistantOfficialId] = useState("");
   const [modal, setModal] = useState<ModalState>(initialModalState);
+  const [openActionsMenuId, setOpenActionsMenuId] = useState<string | null>(null);
+  const [actionsMenuPosition, setActionsMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [actionsMenuAnchorId, setActionsMenuAnchorId] = useState<string | null>(null);
+  const [whatsAppModal, setWhatsAppModal] = useState<WhatsAppModalState>(initialWhatsAppModalState);
 
   const user = getUser();
 
@@ -887,20 +909,292 @@ function ScalesPageContent() {
           Recusar
         </button>
 
-        {canResendScaleNotification(scale) && (
-          <button
-            type="button"
-            onClick={() => resendScaleNotification(scale)}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-sm text-[var(--cdb-blue)] transition hover:bg-blue-100"
-            title="Reenviar notificação push"
-            aria-label={`Reenviar notificação push para ${
-              scale?.official?.user?.name || "o oficial"
-            }`}
-          >
-            🔔
-          </button>
-        )}
       </div>
+    );
+  }
+
+  function renderAdminScaleCommunicationActions(
+    scale: Scale | undefined,
+    compact = false,
+  ) {
+    if (!scale || !canResendScaleNotification(scale)) return null;
+
+    const wrapperClass = compact
+      ? "grid grid-cols-2 gap-2"
+      : "flex w-full flex-col gap-2";
+
+    return (
+      <div className={wrapperClass}>
+        <button
+          type="button"
+          onClick={() => resendScaleNotification(scale)}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
+          title="Reenviar notificação push"
+        >
+          <span aria-hidden="true">🔔</span>
+          <span>Push</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => openScaleWhatsApp(scale)}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+          title="Enviar confirmação por WhatsApp"
+        >
+          <span aria-hidden="true">💬</span>
+          <span>WhatsApp</span>
+        </button>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    if (!openActionsMenuId || !actionsMenuAnchorId) return;
+
+    function updateActionsMenuPosition() {
+      const button = document.querySelector<HTMLButtonElement>(
+        `[data-actions-menu-anchor="${actionsMenuAnchorId}"]`,
+      );
+
+      if (!button) {
+        setOpenActionsMenuId(null);
+        setActionsMenuPosition(null);
+        setActionsMenuAnchorId(null);
+        return;
+      }
+
+      const rect = button.getBoundingClientRect();
+
+      // Se o botão sair totalmente da área visível, fecha o menu.
+      if (
+        rect.bottom < 0 ||
+        rect.top > window.innerHeight ||
+        rect.right < 0 ||
+        rect.left > window.innerWidth
+      ) {
+        setOpenActionsMenuId(null);
+        setActionsMenuPosition(null);
+        setActionsMenuAnchorId(null);
+        return;
+      }
+
+      const isMobileMenu = openActionsMenuId.endsWith("-mobile");
+      const menuWidth = isMobileMenu ? Math.max(rect.width, 240) : 240;
+      const viewportPadding = 12;
+
+      let left = isMobileMenu ? rect.left : rect.right - menuWidth;
+
+      if (left < viewportPadding) {
+        left = viewportPadding;
+      }
+
+      if (left + menuWidth > window.innerWidth - viewportPadding) {
+        left = window.innerWidth - menuWidth - viewportPadding;
+      }
+
+      setActionsMenuPosition({
+        top: rect.bottom + 8,
+        left,
+        width: menuWidth,
+      });
+    }
+
+    updateActionsMenuPosition();
+
+    window.addEventListener("scroll", updateActionsMenuPosition, true);
+    window.addEventListener("resize", updateActionsMenuPosition);
+
+    return () => {
+      window.removeEventListener("scroll", updateActionsMenuPosition, true);
+      window.removeEventListener("resize", updateActionsMenuPosition);
+    };
+  }, [openActionsMenuId, actionsMenuAnchorId]);
+
+  function renderActionsMenu(group: ScaleGroup, mobile = false) {
+    const menuId = `${group.match.id}-${mobile ? "mobile" : "desktop"}`;
+    const isOpen = openActionsMenuId === menuId;
+
+    const hasDcoPending = canResendScaleNotification(group.dco);
+    const hasAssistantPending = canResendScaleNotification(group.assistant);
+
+    function toggleMenu(event: React.MouseEvent<HTMLButtonElement>) {
+      const button = event.currentTarget;
+
+      if (isOpen) {
+        setOpenActionsMenuId(null);
+        setActionsMenuPosition(null);
+        setActionsMenuAnchorId(null);
+        return;
+      }
+
+      const rect = button.getBoundingClientRect();
+      const menuWidth = mobile ? Math.max(rect.width, 240) : 240;
+      const viewportPadding = 12;
+
+      let left = mobile ? rect.left : rect.right - menuWidth;
+
+      if (left < viewportPadding) {
+        left = viewportPadding;
+      }
+
+      if (left + menuWidth > window.innerWidth - viewportPadding) {
+        left = window.innerWidth - menuWidth - viewportPadding;
+      }
+
+      setActionsMenuPosition({
+        top: rect.bottom + 8,
+        left,
+        width: menuWidth,
+      });
+
+      setActionsMenuAnchorId(menuId);
+      setOpenActionsMenuId(menuId);
+    }
+
+    function closeMenu() {
+      setOpenActionsMenuId(null);
+      setActionsMenuPosition(null);
+      setActionsMenuAnchorId(null);
+    }
+
+    return (
+      <>
+        <button
+          type="button"
+          data-actions-menu-anchor={menuId}
+          onClick={toggleMenu}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+          aria-expanded={isOpen}
+          aria-haspopup="menu"
+        >
+          <span>Ações</span>
+          <span className={`text-[10px] transition ${isOpen ? "rotate-180" : ""}`}>▼</span>
+        </button>
+
+        {isOpen && actionsMenuPosition && (
+          <>
+            <button
+              type="button"
+              aria-label="Fechar menu de ações"
+              onClick={closeMenu}
+              className="fixed inset-0 z-[80] cursor-default bg-transparent"
+            />
+
+            <div
+              className="fixed z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              style={{
+                top: actionsMenuPosition.top,
+                left: actionsMenuPosition.left,
+                width: actionsMenuPosition.width,
+                maxHeight: "calc(100vh - 24px)",
+              }}
+              role="menu"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu();
+                  startEdit(group);
+                }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                role="menuitem"
+              >
+                <span aria-hidden="true">✏️</span>
+                <span>Editar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu();
+                  deleteFullScale(group);
+                }}
+                className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left text-sm font-bold text-red-700 transition hover:bg-red-50"
+                role="menuitem"
+              >
+                <span aria-hidden="true">🗑️</span>
+                <span>Excluir</span>
+              </button>
+
+              {(hasDcoPending || hasAssistantPending) && (
+                <div className="border-t border-slate-100 bg-slate-50 px-4 py-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    Comunicação
+                  </p>
+                </div>
+              )}
+
+              {hasDcoPending && (
+                <>
+                  <div className="px-4 pt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    DCO
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      resendScaleNotification(group.dco);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[var(--cdb-blue)] transition hover:bg-blue-50"
+                    role="menuitem"
+                  >
+                    <span aria-hidden="true">🔔</span>
+                    <span>Enviar Push</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      openScaleWhatsApp(group.dco);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
+                    role="menuitem"
+                  >
+                    <span aria-hidden="true">💬</span>
+                    <span>Enviar WhatsApp</span>
+                  </button>
+                </>
+              )}
+
+              {hasAssistantPending && (
+                <>
+                  <div className="border-t border-slate-100 px-4 pt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    OF
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      resendScaleNotification(group.assistant);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[var(--cdb-blue)] transition hover:bg-blue-50"
+                    role="menuitem"
+                  >
+                    <span aria-hidden="true">🔔</span>
+                    <span>Enviar Push</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      openScaleWhatsApp(group.assistant);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
+                    role="menuitem"
+                  >
+                    <span aria-hidden="true">💬</span>
+                    <span>Enviar WhatsApp</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </>
     );
   }
 
@@ -1154,6 +1448,98 @@ function ScalesPageContent() {
         }
       },
     });
+  }
+
+  async function openScaleWhatsApp(scale?: Scale) {
+    if (!scale) return;
+
+    if (!isAdmin) {
+      showMessage(
+        "Permissão negada",
+        "Somente administradores podem enviar a escala por WhatsApp.",
+        "warning",
+      );
+      return;
+    }
+
+    if (getScaleConfirmationState(scale) !== "PENDING") {
+      showMessage(
+        "Resposta já registrada",
+        "O WhatsApp de confirmação só pode ser enviado enquanto a escala estiver pendente.",
+        "warning",
+      );
+      return;
+    }
+
+    try {
+      const response = await api.post(
+        `/match-officials/${scale.id}/whatsapp-link`,
+      );
+
+      const whatsappUrl = String(response.data?.whatsappUrl || "");
+      const message = String(response.data?.message || "");
+
+      if (!whatsappUrl || !message) {
+        showMessage(
+          "WhatsApp indisponível",
+          "O backend não retornou os dados necessários para o envio.",
+          "danger",
+        );
+        return;
+      }
+
+      setWhatsAppModal({
+        open: true,
+        officialName: scale.official?.user?.name || "Oficial",
+        roleLabel: scale.role === "DCO" ? "DCO" : "Assistente",
+        matchLabel: `${scale.match.homeTeam} x ${scale.match.awayTeam}`,
+        message,
+        whatsappUrl,
+      });
+    } catch (error: any) {
+      showMessage(
+        "Erro ao preparar WhatsApp",
+        getErrorMessage(
+          error,
+          "Não foi possível preparar a mensagem da escala.",
+        ),
+        "danger",
+      );
+    }
+  }
+
+  async function copyWhatsAppMessage() {
+    if (!whatsAppModal.message) return;
+
+    try {
+      await navigator.clipboard.writeText(whatsAppModal.message);
+
+      setWhatsAppModal(initialWhatsAppModalState);
+
+      showMessage(
+        "Mensagem copiada",
+        "A mensagem da escala foi copiada. Agora é só colar na conversa do WhatsApp.",
+        "success",
+      );
+    } catch {
+      showMessage(
+        "Não foi possível copiar",
+        "Seu navegador não permitiu copiar automaticamente a mensagem.",
+        "warning",
+      );
+    }
+  }
+
+  function openWhatsAppTab() {
+    if (!whatsAppModal.whatsappUrl) return;
+
+    window.open(
+      whatsAppModal.whatsappUrl,
+      "cdb-whatsapp",
+      "noopener,noreferrer",
+    );
+
+    setWhatsAppModal(initialWhatsAppModalState);
   }
 
   async function deleteScale(id: string) {
@@ -1851,20 +2237,8 @@ function ScalesPageContent() {
                   </div>
 
                   {isAdmin && (
-                    <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
-                      <button
-                        onClick={() => startEdit(group)}
-                        className="inline-flex items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-sm font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                      >
-                        Editar
-                      </button>
-
-                      <button
-                        onClick={() => deleteFullScale(group)}
-                        className="inline-flex items-center justify-center rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-sm font-black text-red-700 transition hover:bg-red-100"
-                      >
-                        Excluir
-                      </button>
+                    <div className="mt-4 border-t border-slate-100 pt-4">
+                      {renderActionsMenu(group, true)}
                     </div>
                   )}
 
@@ -2025,22 +2399,8 @@ function ScalesPageContent() {
 
                       {isAdmin && (
                         <td className="py-5 align-top">
-                          <div className="flex w-full min-w-[96px] max-w-[110px] flex-col items-stretch gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(group)}
-                              className="inline-flex w-full items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-[var(--cdb-blue)] transition hover:bg-blue-100"
-                            >
-                              Editar
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => deleteFullScale(group)}
-                              className="inline-flex w-full items-center justify-center rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-black text-red-700 transition hover:bg-red-100"
-                            >
-                              Excluir
-                            </button>
+                          <div className="w-full min-w-[96px] max-w-[110px]">
+                            {renderActionsMenu(group)}
                           </div>
                         </td>
                       )}
@@ -2070,6 +2430,103 @@ function ScalesPageContent() {
           </div>
         </section>
       </div>
+
+      {whatsAppModal.open && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setWhatsAppModal(initialWhatsAppModalState);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-5 sm:px-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                    WhatsApp
+                  </p>
+                  <h2 className="mt-1 text-xl font-black text-slate-900">
+                    Enviar escala
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setWhatsAppModal(initialWhatsAppModalState)}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-black text-slate-500 transition hover:bg-slate-50"
+                  aria-label="Fechar"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 sm:p-6">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    Oficial
+                  </p>
+                  <p className="mt-1 font-black text-slate-800">
+                    {whatsAppModal.officialName}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    Função
+                  </p>
+                  <p className="mt-1 font-black text-slate-800">
+                    {whatsAppModal.roleLabel}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  Jogo
+                </p>
+                <p className="mt-1 font-black text-slate-800">
+                  {whatsAppModal.matchLabel}
+                </p>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  Mensagem
+                </p>
+                <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-600">
+                  {whatsAppModal.message}
+                </pre>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={copyWhatsAppMessage}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+                >
+                  📋 Copiar mensagem
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openWhatsAppTab}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700"
+                >
+                  🟢 Abrir WhatsApp
+                </button>
+              </div>
+
+              <p className="mt-4 text-center text-xs leading-5 text-slate-400">
+                O botão Abrir WhatsApp reutiliza a mesma aba aberta pelo CDB sempre que o navegador permitir.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         open={modal.open}

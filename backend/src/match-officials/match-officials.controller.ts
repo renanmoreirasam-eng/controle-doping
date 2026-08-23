@@ -48,6 +48,11 @@ export class MatchOfficialsController {
     return this.matchOfficialsService.resendPendingNotification(id, req.user);
   }
 
+  @Post(':id/whatsapp-link')
+  async createWhatsAppLink(@Param('id') id: string, @Req() req: any) {
+    return this.matchOfficialsService.createWhatsAppLink(id, req.user);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.matchOfficialsService.remove(id);
