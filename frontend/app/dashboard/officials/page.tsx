@@ -19,6 +19,7 @@ type Official = {
   operationalRole?: string | null;
   personalDataUpdatedAt?: string | null;
   user: {
+    id?: string;
     name: string;
     email?: string | null;
     role?: string | null;
@@ -50,6 +51,26 @@ type ModalState = {
   confirmText?: string;
   cancelText?: string;
   onConfirm?: () => void | Promise<void>;
+};
+
+type ResetPasswordState = {
+  open: boolean;
+  official: Official | null;
+  newPassword: string;
+  confirmPassword: string;
+  showNewPassword: boolean;
+  showConfirmPassword: boolean;
+  saving: boolean;
+};
+
+const initialResetPasswordState: ResetPasswordState = {
+  open: false,
+  official: null,
+  newPassword: "",
+  confirmPassword: "",
+  showNewPassword: false,
+  showConfirmPassword: false,
+  saving: false,
 };
 
 const emptyForm: OfficialForm = {
@@ -191,9 +212,11 @@ export default function OfficialsPage() {
     variant: "default",
     confirmText: "Fechar",
   });
+  const [resetPasswordModal, setResetPasswordModal] =
+    useState<ResetPasswordState>(initialResetPasswordState);
 
   const isAdmin = currentUserRole === "ADMIN";
-  const canEditOwnData = !isAdmin;
+  const canEditOwnData = false;
 
   function closeModal() {
     setModal((current) => ({
@@ -298,11 +321,7 @@ export default function OfficialsPage() {
 
       const userRole = await loadCurrentUserRole();
 
-      if (userRole === "ADMIN") {
-        await loadOfficials();
-      } else {
-        await Promise.all([loadOfficials(), loadMyOfficial()]);
-      }
+      await loadOfficials();
     } catch (error) {
       console.error("Erro ao carregar oficiais:", error);
     } finally {
@@ -469,6 +488,94 @@ export default function OfficialsPage() {
     }
   }
 
+  function openResetPasswordModal(official: Official) {
+    if (!isAdmin) return;
+
+    if (!official.user?.id) {
+      showError(
+        "Usuário não identificado",
+        "Não foi possível identificar o usuário vinculado a este oficial.",
+      );
+      return;
+    }
+
+    setResetPasswordModal({
+      ...initialResetPasswordState,
+      open: true,
+      official,
+    });
+  }
+
+  function closeResetPasswordModal() {
+    if (resetPasswordModal.saving) return;
+    setResetPasswordModal(initialResetPasswordState);
+  }
+
+  async function handleResetPassword() {
+    const official = resetPasswordModal.official;
+
+    if (!official?.user?.id) {
+      showError(
+        "Usuário não identificado",
+        "Não foi possível identificar o usuário vinculado a este oficial.",
+      );
+      return;
+    }
+
+    if (resetPasswordModal.newPassword.length < 8) {
+      showWarning(
+        "Senha inválida",
+        "A nova senha deve possuir no mínimo 8 caracteres.",
+      );
+      return;
+    }
+
+    if (
+      resetPasswordModal.newPassword !==
+      resetPasswordModal.confirmPassword
+    ) {
+      showWarning(
+        "Senhas diferentes",
+        "A confirmação da nova senha não confere.",
+      );
+      return;
+    }
+
+    try {
+      setResetPasswordModal((current) => ({
+        ...current,
+        saving: true,
+      }));
+
+      const response = await api.patch(
+        `/users/${official.user.id}/reset-password`,
+        {
+          newPassword: resetPasswordModal.newPassword,
+          confirmPassword: resetPasswordModal.confirmPassword,
+        },
+      );
+
+      setResetPasswordModal(initialResetPasswordState);
+
+      showSuccess(
+        "Senha redefinida",
+        response.data?.message ||
+          `A senha de ${official.user.name} foi redefinida com sucesso.`,
+      );
+    } catch (error: any) {
+      setResetPasswordModal((current) => ({
+        ...current,
+        saving: false,
+      }));
+
+      showError(
+        "Erro ao redefinir senha",
+        error.response?.data?.message ||
+          "Não foi possível redefinir a senha do usuário.",
+      );
+    }
+  }
+
   function renderPersonalFields(
     values: OfficialForm,
     onChange: <K extends keyof OfficialForm>(
@@ -600,7 +707,7 @@ export default function OfficialsPage() {
               </h1>
 
               <p className="text-slate-500 mt-2 max-w-2xl">
-                Gerencie os oficiais, perfis de acesso e dados de contato.
+                Consulte os oficiais e, para administradores, gerencie cadastros, acessos e senhas.
               </p>
             </div>
 
@@ -1047,12 +1154,19 @@ export default function OfficialsPage() {
                       </div>
 
                       {isAdmin && (
-                        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                        <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row">
                           <button
                             onClick={() => startEdit(official)}
                             className="bg-[var(--cdb-blue)] text-white px-5 py-3 rounded-2xl font-bold hover:brightness-90 transition shadow-sm"
                           >
                             Editar
+                          </button>
+
+                          <button
+                            onClick={() => openResetPasswordModal(official)}
+                            className="border border-amber-200 bg-amber-50 px-5 py-3 rounded-2xl font-bold text-amber-800 hover:bg-amber-100 transition"
+                          >
+                            🔑 Redefinir senha
                           </button>
                         </div>
                       )}
@@ -1080,6 +1194,167 @@ export default function OfficialsPage() {
           )}
         </section>
       </div>
+      {resetPasswordModal.open && resetPasswordModal.official && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Fechar redefinição de senha"
+            onClick={closeResetPasswordModal}
+            className="absolute inset-0 cursor-default"
+          />
+
+          <div className="relative z-[81] w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-amber-800">
+                    🔑 Segurança
+                  </div>
+
+                  <h2 className="mt-3 text-2xl font-black text-[var(--cdb-dark)]">
+                    Redefinir senha
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Usuário:{" "}
+                    <span className="font-bold text-slate-700">
+                      {resetPasswordModal.official.user.name}
+                    </span>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeResetPasswordModal}
+                  disabled={resetPasswordModal.saving}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 font-black text-slate-500 transition hover:bg-slate-200 disabled:opacity-50"
+                  aria-label="Fechar"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-5 sm:p-6">
+              <div>
+                <label className="mb-2 block text-xs font-bold text-[var(--cdb-dark)]">
+                  Nova senha
+                </label>
+
+                <div className="relative">
+                  <input
+                    type={
+                      resetPasswordModal.showNewPassword
+                        ? "text"
+                        : "password"
+                    }
+                    value={resetPasswordModal.newPassword}
+                    onChange={(e) =>
+                      setResetPasswordModal((current) => ({
+                        ...current,
+                        newPassword: e.target.value,
+                      }))
+                    }
+                    autoComplete="new-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 focus:border-[var(--cdb-blue)] focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
+                    placeholder="Mínimo de 8 caracteres"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResetPasswordModal((current) => ({
+                        ...current,
+                        showNewPassword: !current.showNewPassword,
+                      }))
+                    }
+                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500"
+                    aria-label={
+                      resetPasswordModal.showNewPassword
+                        ? "Ocultar senha"
+                        : "Mostrar senha"
+                    }
+                  >
+                    {resetPasswordModal.showNewPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-bold text-[var(--cdb-dark)]">
+                  Confirmar nova senha
+                </label>
+
+                <div className="relative">
+                  <input
+                    type={
+                      resetPasswordModal.showConfirmPassword
+                        ? "text"
+                        : "password"
+                    }
+                    value={resetPasswordModal.confirmPassword}
+                    onChange={(e) =>
+                      setResetPasswordModal((current) => ({
+                        ...current,
+                        confirmPassword: e.target.value,
+                      }))
+                    }
+                    autoComplete="new-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 focus:border-[var(--cdb-blue)] focus:outline-none focus:ring-2 focus:ring-[var(--cdb-blue)]"
+                    placeholder="Digite novamente a nova senha"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResetPasswordModal((current) => ({
+                        ...current,
+                        showConfirmPassword:
+                          !current.showConfirmPassword,
+                      }))
+                    }
+                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500"
+                    aria-label={
+                      resetPasswordModal.showConfirmPassword
+                        ? "Ocultar senha"
+                        : "Mostrar senha"
+                    }
+                  >
+                    {resetPasswordModal.showConfirmPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                O administrador não visualiza a senha atual do usuário. A nova senha substitui a anterior imediatamente.
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+              <button
+                type="button"
+                onClick={closeResetPasswordModal}
+                disabled={resetPasswordModal.saving}
+                className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={resetPasswordModal.saving}
+                className="rounded-2xl bg-[var(--cdb-blue)] px-5 py-3 text-sm font-black text-white transition hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {resetPasswordModal.saving
+                  ? "Redefinindo..."
+                  : "Redefinir senha"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={modal.open}
         title={modal.title}

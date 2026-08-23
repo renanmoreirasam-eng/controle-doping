@@ -98,6 +98,12 @@ const allMenus = [
     roles: ['ADMIN', 'COORDINATOR'],
   },
   {
+    name: 'Minha conta',
+    href: '/dashboard/account',
+    icon: '👤',
+    roles: ['ADMIN', 'COORDINATOR', 'OFFICIAL'],
+  },
+  {
     name: 'Notificações Push',
     href: '/dashboard/push-logs',
     icon: '🔔',
