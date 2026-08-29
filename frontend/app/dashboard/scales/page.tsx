@@ -978,7 +978,8 @@ function ScalesPageContent() {
         return;
       }
 
-      const isMobileMenu = openActionsMenuId.endsWith("-mobile");
+      const isMobileMenu =
+  openActionsMenuId?.endsWith("-mobile") ?? false;
       const menuWidth = isMobileMenu ? Math.max(rect.width, 240) : 240;
       const viewportPadding = 12;
 
