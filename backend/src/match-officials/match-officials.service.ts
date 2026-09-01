@@ -21,6 +21,27 @@ export class MatchOfficialsService {
     return createHash('sha256').update(token).digest('hex');
   }
 
+  private getFrontendUrl() {
+    return String(
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+    ).replace(/\/$/, '');
+  }
+
+  private async createConfirmationUrl(scaleId: string) {
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashConfirmationToken(token);
+
+    await this.prisma.matchOfficial.update({
+      where: { id: scaleId },
+      data: {
+        confirmationTokenHash: tokenHash,
+        confirmationTokenCreatedAt: new Date(),
+      },
+    });
+
+    return `${this.getFrontendUrl()}/confirmar-escala/${token}`;
+  }
+
   private normalizeWhatsAppPhone(phone?: string | null) {
     const digits = String(phone || '').replace(/\D/g, '');
 
@@ -175,18 +196,30 @@ export class MatchOfficialsService {
         ? new Date(created.match.matchDate).toLocaleDateString('pt-BR')
         : '';
 
-      this.pushService
-        .sendToUser(userId, {
-          title: 'Nova escala pendente',
-          body: `Você foi escalado para ${homeTeam} x ${awayTeam}${matchDate ? ` em ${matchDate}` : ''}. Toque para visualizar.`,
-          url: `/dashboard/matches/${created.matchId}`,
-        })
-        .catch((error) => {
-          console.error(
-            'Erro ao enviar push de nova escala:',
-            error,
-          );
-        });
+      try {
+        const confirmationUrl = await this.createConfirmationUrl(created.id);
+
+        this.pushService
+          .sendToUser(userId, {
+            title: 'Nova escala pendente',
+            body: `Você foi escalado para ${homeTeam} x ${awayTeam}${matchDate ? ` em ${matchDate}` : ''}. Toque para confirmar ou recusar.`,
+            url: confirmationUrl,
+            module: 'SCALES',
+            entityId: created.id,
+            entityType: 'MATCH_OFFICIAL',
+          })
+          .catch((error) => {
+            console.error(
+              'Erro ao enviar push de nova escala:',
+              error,
+            );
+          });
+      } catch (error) {
+        console.error(
+          'Erro ao gerar link de confirmação da nova escala:',
+          error,
+        );
+      }
     }
 
     return created;
@@ -263,10 +296,15 @@ export class MatchOfficialsService {
       : '';
     const roleLabel = scale.role === 'DCO' ? 'DCO' : 'Assistente';
 
+    const confirmationUrl = await this.createConfirmationUrl(scale.id);
+
     await this.pushService.sendToUser(targetUserId, {
       title: 'Escala pendente de confirmação',
-      body: `Você possui uma escala pendente como ${roleLabel} para ${homeTeam} x ${awayTeam}${matchDate ? ` em ${matchDate}` : ''}. Toque para visualizar.`,
-      url: `/dashboard/scales?status=PENDING`,
+      body: `Você possui uma escala pendente como ${roleLabel} para ${homeTeam} x ${awayTeam}${matchDate ? ` em ${matchDate}` : ''}. Toque para confirmar ou recusar.`,
+      url: confirmationUrl,
+      module: 'SCALES',
+      entityId: scale.id,
+      entityType: 'MATCH_OFFICIAL',
     });
 
     return {
@@ -308,22 +346,7 @@ export class MatchOfficialsService {
       );
     }
 
-    const token = randomBytes(32).toString('hex');
-    const tokenHash = this.hashConfirmationToken(token);
-
-    await this.prisma.matchOfficial.update({
-      where: { id },
-      data: {
-        confirmationTokenHash: tokenHash,
-        confirmationTokenCreatedAt: new Date(),
-      },
-    });
-
-    const appUrl = String(
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-    ).replace(/\/$/, '');
-
-    const confirmationUrl = `${appUrl}/confirmar-escala/${token}`;
+    const confirmationUrl = await this.createConfirmationUrl(scale.id);
     const roleLabel = scale.role === 'DCO' ? 'DCO' : 'Assistente';
     const championship = scale.match.championship?.name || '';
     const stadium = scale.match.stadium?.name || '';
