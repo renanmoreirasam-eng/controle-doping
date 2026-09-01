@@ -201,7 +201,13 @@ function ScalesPageContent() {
   const [assistantOfficialId, setAssistantOfficialId] = useState("");
   const [modal, setModal] = useState<ModalState>(initialModalState);
   const [openActionsMenuId, setOpenActionsMenuId] = useState<string | null>(null);
-  const [actionsMenuPosition, setActionsMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [actionsMenuPosition, setActionsMenuPosition] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
   const [actionsMenuAnchorId, setActionsMenuAnchorId] = useState<string | null>(null);
   const [whatsAppModal, setWhatsAppModal] = useState<WhatsAppModalState>(initialWhatsAppModalState);
 
@@ -558,55 +564,59 @@ function ScalesPageContent() {
   }, [matches]);
 
   const filteredGroups = useMemo(() => {
-    if (!championshipFilter) return groupedScales;
+    const baseGroups = championshipFilter
+      ? groupedScales.filter(
+          (group) =>
+            group.match.championship?.name?.trim() === championshipFilter,
+        )
+      : groupedScales;
 
-    return groupedScales.filter(
-      (group) =>
-        group.match.championship?.name?.trim() === championshipFilter,
-    );
-  }, [groupedScales, championshipFilter]);
+    return [...baseGroups].sort((a, b) => {
+      const firstDate = new Date(a.match.matchDate).getTime();
+      const secondDate = new Date(b.match.matchDate).getTime();
 
-  const groupedFilteredGroups = useMemo(() => {
+      return scaleTab === "DONE"
+        ? secondDate - firstDate
+        : firstDate - secondDate;
+    });
+  }, [groupedScales, championshipFilter, scaleTab]);
+
+  const groupedFilteredGroupsByDate = useMemo(() => {
     const groups = new Map<
       string,
       {
         id: string;
-        name: string;
+        label: string;
         groups: ScaleGroup[];
-        visibleGroups: ScaleGroup[];
-        page: number;
-        total: number;
-        totalPages: number;
       }
     >();
 
     filteredGroups.forEach((group) => {
-      const championshipName =
-        group.match.championship?.name?.trim() || "Sem campeonato";
-      const championshipId = championshipName.toLocaleLowerCase("pt-BR");
-      const currentGroup = groups.get(championshipId);
+      const date = new Date(group.match.matchDate);
+
+      if (Number.isNaN(date.getTime())) return;
+
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const dateKey = `${year}-${month}-${day}`;
+      const dateLabel = date.toLocaleDateString("pt-BR");
+
+      const currentGroup = groups.get(dateKey);
 
       if (currentGroup) {
         currentGroup.groups.push(group);
-        currentGroup.visibleGroups.push(group);
-        currentGroup.total += 1;
         return;
       }
 
-      groups.set(championshipId, {
-        id: championshipId,
-        name: championshipName,
+      groups.set(dateKey, {
+        id: dateKey,
+        label: dateLabel,
         groups: [group],
-        visibleGroups: [group],
-        page: 1,
-        total: 1,
-        totalPages: 1,
       });
     });
 
-    return Array.from(groups.values()).sort((a, b) =>
-      a.name.localeCompare(b.name, "pt-BR"),
-    );
+    return Array.from(groups.values());
   }, [filteredGroups]);
 
   const activeScaleGroups = summary.activeScaleGroups;
@@ -993,10 +1003,30 @@ function ScalesPageContent() {
         left = window.innerWidth - menuWidth - viewportPadding;
       }
 
+      const menuGap = 8;
+      const spaceBelow =
+        window.innerHeight - rect.bottom - menuGap - viewportPadding;
+      const spaceAbove =
+        rect.top - menuGap - viewportPadding;
+      const shouldOpenUp =
+        spaceBelow < 280 && spaceAbove > spaceBelow;
+      const availableHeight = Math.max(
+        140,
+        shouldOpenUp ? spaceAbove : spaceBelow,
+      );
+
       setActionsMenuPosition({
-        top: rect.bottom + 8,
+        ...(shouldOpenUp
+          ? {
+              bottom:
+                window.innerHeight - rect.top + menuGap,
+            }
+          : {
+              top: rect.bottom + menuGap,
+            }),
         left,
         width: menuWidth,
+        maxHeight: availableHeight,
       });
     }
 
@@ -1042,10 +1072,30 @@ function ScalesPageContent() {
         left = window.innerWidth - menuWidth - viewportPadding;
       }
 
+      const menuGap = 8;
+      const spaceBelow =
+        window.innerHeight - rect.bottom - menuGap - viewportPadding;
+      const spaceAbove =
+        rect.top - menuGap - viewportPadding;
+      const shouldOpenUp =
+        spaceBelow < 280 && spaceAbove > spaceBelow;
+      const availableHeight = Math.max(
+        140,
+        shouldOpenUp ? spaceAbove : spaceBelow,
+      );
+
       setActionsMenuPosition({
-        top: rect.bottom + 8,
+        ...(shouldOpenUp
+          ? {
+              bottom:
+                window.innerHeight - rect.top + menuGap,
+            }
+          : {
+              top: rect.bottom + menuGap,
+            }),
         left,
         width: menuWidth,
+        maxHeight: availableHeight,
       });
 
       setActionsMenuAnchorId(menuId);
@@ -1082,12 +1132,13 @@ function ScalesPageContent() {
             />
 
             <div
-              className="fixed z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              className="fixed z-[90] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-2xl"
               style={{
                 top: actionsMenuPosition.top,
+                bottom: actionsMenuPosition.bottom,
                 left: actionsMenuPosition.left,
                 width: actionsMenuPosition.width,
-                maxHeight: "calc(100vh - 24px)",
+                maxHeight: actionsMenuPosition.maxHeight,
               }}
               role="menu"
             >
@@ -2117,27 +2168,27 @@ function ScalesPageContent() {
             )}
 
             <div className="space-y-5 lg:hidden">
-              {groupedFilteredGroups.map((championshipGroup) => (
+              {groupedFilteredGroupsByDate.map((dateGroup) => (
                 <section
-                  key={championshipGroup.id}
+                  key={dateGroup.id}
                   className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm"
                 >
-                  <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-blue-50 px-5 py-4">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-5 py-4">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
-                        Competição
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                        Data
                       </p>
-                      <h3 className="mt-1 text-lg font-black text-[var(--cdb-blue)]">
-                        {championshipGroup.name}
+                      <h3 className="mt-1 text-lg font-black text-[var(--cdb-dark)]">
+                        📅 {dateGroup.label}
                       </h3>
                     </div>
-                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
-                      {championshipGroup.groups.length} escala{championshipGroup.groups.length === 1 ? "" : "s"}
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-600">
+                      {dateGroup.groups.length} escala{dateGroup.groups.length === 1 ? "" : "s"}
                     </span>
                   </div>
 
                   <div className="space-y-4 p-4">
-              {championshipGroup.visibleGroups.map((group) => (
+              {dateGroup.groups.map((group) => (
                 <div
                   key={group.match.id}
                   className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -2260,32 +2311,34 @@ function ScalesPageContent() {
             <div className="hidden space-y-5 lg:block">
               <div className="rounded-[2rem] border border-slate-200 bg-slate-50 px-5 py-4">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                  Todos os campeonatos
+                  Visualização por data
                 </p>
                 <h3 className="mt-1 text-xl font-black text-[var(--cdb-dark)]">
-                  Escalas agrupadas por competição
+                  {scaleTab === "DONE"
+                    ? "Escalas concluídas por data"
+                    : "Próximas escalas por data"}
                 </h3>
                 <p className="mt-1 text-sm font-semibold text-slate-500">
-                  {filteredGroups.length} jogo{filteredGroups.length === 1 ? "" : "s"} em {groupedFilteredGroups.length} {groupedFilteredGroups.length === 1 ? "competição" : "competições"}.
+                  {filteredGroups.length} jogo{filteredGroups.length === 1 ? "" : "s"} em {groupedFilteredGroupsByDate.length} data{groupedFilteredGroupsByDate.length === 1 ? "" : "s"}.
                 </p>
               </div>
 
-              {groupedFilteredGroups.map((championshipGroup) => (
+              {groupedFilteredGroupsByDate.map((dateGroup) => (
                 <section
-                  key={championshipGroup.id}
+                  key={dateGroup.id}
                   className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm"
                 >
-                  <div className="flex items-center justify-between gap-4 border-b border-blue-100 bg-blue-50 px-5 py-4">
+                  <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
-                        Competição
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                        Data
                       </p>
-                      <h3 className="mt-1 text-xl font-black text-[var(--cdb-blue)]">
-                        {championshipGroup.name}
+                      <h3 className="mt-1 text-xl font-black text-[var(--cdb-dark)]">
+                        📅 {dateGroup.label}
                       </h3>
                     </div>
-                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-[var(--cdb-blue)]">
-                      {championshipGroup.groups.length} escala{championshipGroup.groups.length === 1 ? "" : "s"}
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-600">
+                      {dateGroup.groups.length} escala{dateGroup.groups.length === 1 ? "" : "s"}
                     </span>
                   </div>
                   <div className="max-w-full overflow-x-auto px-5">
@@ -2314,12 +2367,17 @@ function ScalesPageContent() {
                 </thead>
 
                 <tbody>
-                  {championshipGroup.visibleGroups.map((group) => (
+                  {dateGroup.groups.map((group) => (
                     <tr
                       key={group.match.id}
                       className="border-b border-slate-100 transition hover:bg-slate-50"
                     >
                       <td className="py-5 pr-4 align-top">
+                        <div className="mb-2">
+                          <span className="inline-flex rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-black text-[var(--cdb-blue)]">
+                            🏆 {group.match.championship?.name || "Sem competição"}
+                          </span>
+                        </div>
                         <div className="font-black text-[var(--cdb-dark)]">
                           {renderTeamName(
                             group.match.homeTeam,
@@ -2434,15 +2492,15 @@ function ScalesPageContent() {
 
       {whatsAppModal.open && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-slate-950/50 p-3 backdrop-blur-sm sm:items-center sm:p-4"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setWhatsAppModal(initialWhatsAppModalState);
             }
           }}
         >
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-            <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-5 sm:px-6">
+          <div className="my-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]">
+            <div className="shrink-0 border-b border-emerald-100 bg-emerald-50 px-5 py-4 sm:px-6 sm:py-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
@@ -2464,7 +2522,7 @@ function ScalesPageContent() {
               </div>
             </div>
 
-            <div className="p-5 sm:p-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
@@ -2498,7 +2556,7 @@ function ScalesPageContent() {
                 <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
                   Mensagem
                 </p>
-                <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-600">
+                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-600 sm:max-h-60">
                   {whatsAppModal.message}
                 </pre>
               </div>
