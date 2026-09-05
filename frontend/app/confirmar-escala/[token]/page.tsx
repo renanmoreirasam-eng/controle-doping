@@ -117,8 +117,12 @@ export default function ConfirmarEscalaPage() {
     <main className="min-h-screen bg-[var(--cdb-light)] px-4 py-8 sm:py-12">
       <div className="mx-auto w-full max-w-xl">
         <div className="mb-6 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[var(--cdb-blue)] text-3xl text-white shadow-lg">
-            🧪
+          <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-white shadow-lg ring-1 ring-slate-200">
+            <img
+              src="/icon-192.png"
+              alt="CDB"
+              className="h-full w-full object-contain"
+            />
           </div>
 
           <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-[var(--cdb-blue)]">
