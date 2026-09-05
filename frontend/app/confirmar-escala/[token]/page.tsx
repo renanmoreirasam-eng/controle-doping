@@ -51,6 +51,7 @@ export default function ConfirmarEscalaPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<'CONFIRM' | 'REFUSE' | null>(null);
   const [error, setError] = useState('');
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
 
   async function loadConfirmation() {
     if (!token) return;
@@ -89,6 +90,14 @@ export default function ConfirmarEscalaPage() {
       await api.post(
         `/scale-confirmation/${encodeURIComponent(token)}/${action}`,
       );
+
+      if (action === 'confirm') {
+        setShowSuccessAnimation(true);
+
+        window.setTimeout(() => {
+          setShowSuccessAnimation(false);
+        }, 2200);
+      }
 
       await loadConfirmation();
     } catch (err: any) {
@@ -304,6 +313,149 @@ export default function ConfirmarEscalaPage() {
           ) : null}
         </section>
       </div>
+
+      {showSuccessAnimation && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
+          <div className="goal-celebration relative flex w-full max-w-sm flex-col items-center overflow-hidden rounded-[2rem] border border-white/20 bg-white px-6 py-8 text-center shadow-2xl">
+            <div className="goal-ring absolute left-1/2 top-8 h-36 w-36 -translate-x-1/2 rounded-full border-4 border-emerald-200" />
+
+            <div className="football-ball relative z-10 text-6xl" aria-hidden="true">
+              ⚽
+            </div>
+
+            <div className="success-check relative z-10 mt-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-600 text-4xl font-black text-white shadow-lg">
+              ✓
+            </div>
+
+            <h2 className="relative z-10 mt-5 text-3xl font-black text-slate-900">
+              Escala confirmada!
+            </h2>
+
+            <p className="relative z-10 mt-2 text-base font-bold text-slate-500">
+              Nos vemos no jogo ⚽
+            </p>
+
+            <div className="goal-confetti goal-confetti-1" />
+            <div className="goal-confetti goal-confetti-2" />
+            <div className="goal-confetti goal-confetti-3" />
+            <div className="goal-confetti goal-confetti-4" />
+          </div>
+        </div>
+      )}
+
+      <style jsx global>{`
+        @keyframes footballShoot {
+          0% {
+            opacity: 0;
+            transform: translate(-120px, 90px) scale(0.4) rotate(-90deg);
+          }
+          55% {
+            opacity: 1;
+            transform: translate(12px, -8px) scale(1.15) rotate(180deg);
+          }
+          75% {
+            transform: translate(-5px, 4px) scale(0.95) rotate(250deg);
+          }
+          100% {
+            transform: translate(0, 0) scale(1) rotate(360deg);
+          }
+        }
+
+        @keyframes successPop {
+          0% {
+            opacity: 0;
+            transform: scale(0.4);
+          }
+          70% {
+            opacity: 1;
+            transform: scale(1.15);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+
+        @keyframes goalPulse {
+          0% {
+            opacity: 0;
+            transform: translateX(-50%) scale(0.5);
+          }
+          50% {
+            opacity: 0.7;
+          }
+          100% {
+            opacity: 0;
+            transform: translateX(-50%) scale(1.45);
+          }
+        }
+
+        @keyframes confettiFall {
+          0% {
+            opacity: 0;
+            transform: translateY(-10px) rotate(0deg);
+          }
+          20% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(130px) rotate(220deg);
+          }
+        }
+
+        .football-ball {
+          animation: footballShoot 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .success-check {
+          animation: successPop 480ms ease-out 420ms both;
+        }
+
+        .goal-ring {
+          animation: goalPulse 900ms ease-out 280ms both;
+        }
+
+        .goal-confetti {
+          position: absolute;
+          top: 20px;
+          width: 9px;
+          height: 18px;
+          border-radius: 999px;
+          animation: confettiFall 1100ms ease-out 500ms both;
+        }
+
+        .goal-confetti-1 {
+          left: 18%;
+          background: #16a34a;
+        }
+
+        .goal-confetti-2 {
+          left: 36%;
+          background: #facc15;
+          animation-delay: 620ms;
+        }
+
+        .goal-confetti-3 {
+          right: 30%;
+          background: #2563eb;
+          animation-delay: 560ms;
+        }
+
+        .goal-confetti-4 {
+          right: 16%;
+          background: #16a34a;
+          animation-delay: 680ms;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .football-ball,
+          .success-check,
+          .goal-ring,
+          .goal-confetti {
+            animation: none !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
